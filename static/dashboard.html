@@ -42,6 +42,12 @@
   .fired.neg { border-left:4px solid var(--safe); }
   .fired .q { color:var(--muted); font-style:italic; display:block; }
   #alert { display:none; background:var(--fraud); color:#fff; padding:14px; border-radius:10px; font-weight:700; margin:12px 0; }
+  #alert.amber { background:#8a6d00; }
+  #transcript .SHIELD { border-left:4px solid var(--safe); background:#0f1f17; }
+  #sms { display:none; margin:12px 0; background:#f5f5f7; color:#111; border-radius:16px; padding:12px 14px; box-shadow:0 8px 30px rgba(0,0,0,.5); font-size:14px; }
+  #sms .app { display:flex; align-items:center; gap:8px; font-size:12px; color:#555; margin-bottom:4px; }
+  #sms .app b { color:#2ecc71; }
+  #sms .title { font-weight:700; margin-bottom:2px; }
   .foot { display:flex; justify-content:space-between; align-items:center; margin-top:14px; font-size:12px; color:var(--muted); }
   @media (max-width:900px) { main { grid-template-columns:1fr; height:auto; } input[type=text]{ width:180px; } }
 </style>
@@ -71,6 +77,11 @@
       <div class="stat"><div class="k">Utterance to decision</div><div class="v" id="lat">-</div></div>
     </div>
     <div id="alert"></div>
+    <div id="sms">
+      <div class="app"><span style="display:inline-block;width:14px;height:14px;border-radius:4px;background:#2ecc71"></span><b>Scam Shield</b> &middot; Text message &middot; now</div>
+      <div class="title" id="smsTitle"></div>
+      <div id="smsBody"></div>
+    </div>
     <h3>Fraud indicators (caller's words)</h3>
     <div id="fired"></div>
     <h3>Legitimacy evidence</h3>
@@ -87,6 +98,11 @@
 
   const $ = id => document.getElementById(id);
   let traceId = null, partialEls = {}, conv = null, callWs = null, lastText = {}, lastMode = 'listening';
+  let redirected = false, referenceNo = null, redirectTimer = null;
+  const REDIRECT = "This is William's call screening. He doesn't share personal details on calls he didn't place. Please provide a reference number and he'll call you back on the number on his card.";
+  const BANK_NUMBER = '1-800-935-9935';  // Chase, the number printed on the back of the card
+  const NUMWORDS = { zero:'0', oh:'0', one:'1', two:'2', three:'3', four:'4', five:'5', six:'6', seven:'7', eight:'8', nine:'9' };
+  const wordsToDigits = t => t.replace(/\b(zero|oh|one|two|three|four|five|six|seven|eight|nine)\b/gi, w => NUMWORDS[w.toLowerCase()]).replace(/(\d)[\s,-]+(?=\d)/g, '$1');
 
   // Financial framing. Loss figures: FTC 2025 phone-initiated median $2,210 (older adults),
   // Hiya Q4 2024 Medicare avg $539. See docs/research.md for sources.
@@ -124,6 +140,12 @@
       if (!el) { el = document.createElement('div'); el.className = `line partial ${ev.speaker}`; $('transcript').appendChild(el); partialEls[ev.speaker] = el; }
       el.innerHTML = `<span class="who">${ev.speaker}</span>${esc(ev.text)}`; scroll();
     }
+    if (ev.type === 'turn' && (/^[.\s…]+$/.test(ev.text) || (ev.speaker === 'USER' && ev.text.includes('call screening')))) return;
+    if (ev.type === 'turn' && ev.speaker === 'CALLER' && redirected && !intervened) {
+      const m = wordsToDigits(ev.text).match(/(?:reference|case|confirmation)\s*(?:number|no\.?|#)?\s*(?:is|:)?\s*((?:[A-Z]\s?){0,3}(?:\d\s?){5,8})/i);
+      if (m) referenceNo = m[1].replace(/\s+/g, '').toUpperCase();
+      if (m || /no urgency|good practice|completely fine|call (us|the number) back|number on the back/i.test(ev.text)) finishRedirect();
+    }
     if (ev.type === 'turn') {
       const p = partialEls[ev.speaker]; if (p) { p.remove(); delete partialEls[ev.speaker]; }
       const el = document.createElement('div'); el.className = `line ${ev.speaker}`;
@@ -144,9 +166,13 @@
       $('fired').innerHTML = (ev.fired || []).map(f => `<div class="fired ${f.class||'weak'}">${esc(f.criterion)}<span class="q">"${esc(f.quote||'')}"</span></div>`).join('') || '<div class="fired weak">none</div>';
       $('neg').innerHTML = (ev.negatives || []).map(f => `<div class="fired neg">${esc(f.criterion)}<span class="q">"${esc(f.quote||'')}"</span></div>`).join('') || '<div class="fired weak">none</div>';
     }
-    if (ev.type === 'alert') { $('alert').style.display = 'block'; $('alert').textContent = 'INTERVENTION: ' + (ev.user_action || 'Hang up.'); }
+    if (ev.type === 'alert') { $('alert').style.display = 'block'; $('alert').className = ''; $('alert').textContent = 'INTERVENTION: ' + (ev.user_action || 'Hang up.'); }
+    if (ev.type === 'score' && ev.tier === 'UNCERTAIN' && !redirected && !intervened && conv) {
+      const firedText = (ev.fired || []).map(f => (f.criterion || '') + ' ' + (f.quote || '')).join(' ');
+      if (/identity|supply|date of birth|dob|zip|address|account number|social|verify/i.test(firedText)) redirect();
+    }
   }
-  function reset() { intervened = false; $('transcript').innerHTML=''; $('alert').style.display='none'; $('tier').textContent='SAFE'; $('tier').className='SAFE'; $('tierlabel').textContent=TIERLABEL.SAFE; $('bar').style.width='0'; $('score').textContent='0'; $('arch').textContent='none'; $('rail').textContent='none'; $('loss').textContent='$0'; $('fired').innerHTML=''; $('neg').innerHTML=''; partialEls={}; lastText={}; }
+  function reset() { intervened = false; redirected = false; referenceNo = null; clearTimeout(redirectTimer); $('sms').style.display='none'; $('alert').className=''; $('transcript').innerHTML=''; $('alert').style.display='none'; $('tier').textContent='SAFE'; $('tier').className='SAFE'; $('tierlabel').textContent=TIERLABEL.SAFE; $('bar').style.width='0'; $('score').textContent='0'; $('arch').textContent='none'; $('rail').textContent='none'; $('loss').textContent='$0'; $('fired').innerHTML=''; $('neg').innerHTML=''; partialEls={}; lastText={}; }
   function scroll() { $('transcript').scrollTop = $('transcript').scrollHeight; }
   function esc(s) { return String(s).replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c])); }
   $('notscam').onclick = () => dash.send(JSON.stringify({type:'feedback', trace_id: traceId}));
@@ -195,6 +221,7 @@
   };
 
   $('hangup').onclick = () => endCall(true);
+  window.scamShield = { say: t => { try { conv?.sendUserMessage(t); } catch (e) { console.warn(e); } } };
 
   // The SDK delivers the agent's text before the voice has spoken it. Let the caller
   // finish the flagged sentence, then cut in. End-of-speech is measured from the agent's
@@ -216,8 +243,57 @@
     });
   }
 
+  // Amber + identity request: mirror of the red flow, but the shield asks the caller for a
+  // reference number and sends the customer to the number on the back of the card.
+  async function redirect() {
+    redirected = true;
+    $('alert').style.display = 'block'; $('alert').className = 'amber';
+    $('alert').textContent = 'Caller is asking for personal details. Shield is redirecting to a secure line.';
+    await waitForOutputSilence();
+    if (intervened) return;
+    const el = document.createElement('div'); el.className = 'line SHIELD';
+    el.innerHTML = `<span class="who">SHIELD</span>${esc(REDIRECT)}`; $('transcript').appendChild(el); scroll();
+    callWs?.send(JSON.stringify({ type: 'turn', speaker: 'USER', text: '[Call screening assistant] ' + REDIRECT }));
+    lastText['USER'] = REDIRECT;
+    $('status').textContent = 'Shield is speaking to the caller...';
+    await playClip('/static/redirect.mp3', REDIRECT);   // mic stays open: the caller hears it
+    try { conv?.sendUserMessage(REDIRECT); } catch {}
+    $('status').textContent = 'Waiting for the caller to provide a reference number...';
+    redirectTimer = setTimeout(() => { if (!intervened) finishRedirect(); }, 25000);
+  }
+  async function finishRedirect() {
+    if (intervened) return;
+    clearTimeout(redirectTimer);
+    await waitForOutputSilence({ maxMs: 12000 });
+    if (intervened) return;
+    intervened = true;
+    try { conv?.setVolume({ volume: 0 }); } catch {}
+    try { await conv?.endSession(); } catch {}
+    conv = null;
+    $('tier').textContent = 'SAFE'; $('tier').className = 'SAFE'; $('tierlabel').textContent = 'Redirected to a secure line'; $('bar').style.width = '0';
+    $('alert').style.display = 'none';
+    $('smsTitle').textContent = referenceNo ? `Reference ${referenceNo} received` : 'Call ended by Scam Shield';
+    $('smsBody').textContent = (referenceNo
+      ? `The caller provided reference ${referenceNo}. `
+      : 'The caller did not provide a reference number. ')
+      + `To continue, call the number on the back of your card: ${BANK_NUMBER}. Do not call any number the caller gave you.`;
+    $('sms').style.display = 'block';
+    $('status').textContent = 'Call ended. Customer texted the secure number.';
+    dash.send(JSON.stringify({ type: 'feedback', trace_id: traceId, redirected: true, reference: referenceNo }));
+    endCall(true);
+  }
+  function playClip(url, fallbackText) {
+    return new Promise(res => {
+      let settled = false;
+      const finish = () => { if (!settled) { settled = true; res(); } };
+      const fallback = () => { if (settled) return; settled = true; const u = new SpeechSynthesisUtterance(fallbackText); u.onend = res; speechSynthesis.speak(u); };
+      const a = new Audio(url); a.onended = finish; a.onerror = fallback; a.play().catch(fallback);
+    });
+  }
+
   let intervened = false;
   async function intervene(m) {
+    clearTimeout(redirectTimer);
     $('status').textContent = 'Fraud detected. Letting the caller finish the sentence...';
     await waitForOutputSilence();
     intervened = true;                       // ignore anything else from the caller
