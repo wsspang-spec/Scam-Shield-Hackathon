@@ -144,11 +144,7 @@
       $('fired').innerHTML = (ev.fired || []).map(f => `<div class="fired ${f.class||'weak'}">${esc(f.criterion)}<span class="q">"${esc(f.quote||'')}"</span></div>`).join('') || '<div class="fired weak">none</div>';
       $('neg').innerHTML = (ev.negatives || []).map(f => `<div class="fired neg">${esc(f.criterion)}<span class="q">"${esc(f.quote||'')}"</span></div>`).join('') || '<div class="fired weak">none</div>';
     }
-    if (ev.type === 'alert') { $('alert').style.display = 'block'; $('alert').style.background = 'var(--fraud)'; $('alert').textContent = 'INTERVENTION: ' + (ev.user_action || 'Hang up.'); }
-    if (ev.type === 'score' && ev.tier === 'UNCERTAIN' && ev.user_action && $('alert').style.background !== 'var(--fraud)') {
-      $('alert').style.display = 'block'; $('alert').style.background = '#8a6d00'; $('alert').textContent = 'COACH: ' + ev.user_action;
-    }
-    if (ev.type === 'score' && ev.tier === 'SAFE' && $('alert').style.background !== 'var(--fraud)') { $('alert').style.display = 'none'; }
+    if (ev.type === 'alert') { $('alert').style.display = 'block'; $('alert').textContent = 'INTERVENTION: ' + (ev.user_action || 'Hang up.'); }
   }
   function reset() { $('transcript').innerHTML=''; $('alert').style.display='none'; $('tier').textContent='SAFE'; $('tier').className='SAFE'; $('tierlabel').textContent=TIERLABEL.SAFE; $('bar').style.width='0'; $('score').textContent='0'; $('arch').textContent='none'; $('rail').textContent='none'; $('loss').textContent='$0'; $('fired').innerHTML=''; $('neg').innerHTML=''; partialEls={}; lastText={}; }
   function scroll() { $('transcript').scrollTop = $('transcript').scrollHeight; }
@@ -181,7 +177,7 @@
         onConnect: () => $('status').textContent = 'Call connected. Agent is the caller.',
         onDisconnect: () => { $('status').textContent = 'Call ended.'; endCall(false); },
         onError: e => $('status').textContent = 'Agent error: ' + (e?.message || e),
-        onModeChange: ({ mode }) => { lastMode = mode; modeWaiters.slice().forEach(w => w(mode)); },
+        onModeChange: ({ mode }) => { lastMode = mode; },
         onMessage: m => {
           console.debug('[el onMessage]', JSON.stringify(m));
           // SDK shapes seen: {message, source:'user'|'ai'} and {text, role}. Fall back to
@@ -189,7 +185,7 @@
           const text = (m.message ?? m.text ?? '').trim();
           const src = m.source ?? m.role ?? (lastMode === 'speaking' ? 'ai' : 'user');
           const speaker = (src === 'user') ? 'USER' : 'CALLER';
-          if (!text || lastText[speaker] === text) return;
+          if (!text || lastText[speaker] === text || /^[.\s…]+$/.test(text)) return;
           lastText[speaker] = text;
           callWs?.send(JSON.stringify({ type: 'turn', speaker, text }));
         },
@@ -198,33 +194,13 @@
   };
 
   $('hangup').onclick = () => endCall(true);
-  window.scamShield = { say: t => { try { conv?.sendUserMessage(t); } catch (e) { console.warn(e); } }, get conv() { return conv; }, level: () => outputLevel(), get mode() { return lastMode; } };
 
-  // The SDK delivers the agent's text as soon as the LLM produces it, before the
-  // voice has spoken it. So the detector decides before the audience has heard the
-  // line. For the demo, let the caller finish the flagged sentence, then cut in.
-  let modeWaiters = [];
-  function waitForAgentToFinish(maxMs = 9000) {
-    return new Promise(res => {
-      let sawSpeaking = (lastMode === 'speaking');
-      const t = setTimeout(done, maxMs);
-      function done() { clearTimeout(t); modeWaiters = modeWaiters.filter(w => w !== onMode); res(); }
-      function onMode(mode) {
-        if (mode === 'speaking') sawSpeaking = true;
-        else if (mode === 'listening' && sawSpeaking) done();
-      }
-      modeWaiters.push(onMode);
-    });
-  }
-
-  // Wait for the caller's audio to actually stop, measured from the agent's output level
-  // (SDK getOutputByteFrequencyData). Fires the moment the voice goes quiet. No estimates.
+  // The SDK delivers the agent's text before the voice has spoken it. Let the caller
+  // finish the flagged sentence, then cut in. End-of-speech is measured from the agent's
+  // output audio level (calibrated on a real call: 30-90 while speaking, <15 when quiet).
   function outputLevel() {
     try { const d = conv?.getOutputByteFrequencyData?.(); if (!d || !d.length) return 0; let s = 0; for (let i = 0; i < d.length; i++) s += d[i]; return s / d.length; } catch { return 0; }
   }
-  // Measured on a real call: level 30-90 while speaking, decays to ~10 within ~1.5 s of
-  // silence; mode flips to 'listening' ~0.3 s after the voice stops. End-of-speech is
-  // either (listening and level < 30) or (level < 15) held for 300 ms.
   function waitForOutputSilence({ maxMs = 20000, holdMs = 300 } = {}) {
     return new Promise(res => {
       const t0 = Date.now(); let heard = false, quietSince = 0;
@@ -232,17 +208,16 @@
         const lvl = outputLevel(); const now = Date.now();
         const quiet = (lastMode === 'listening' && lvl < 30) || lvl < 15;
         if (lvl >= 30) heard = true;
-        if (heard && quiet) { if (!quietSince) quietSince = now; if (now - quietSince >= holdMs) { clearInterval(iv); res('ended'); } }
+        if (heard && quiet) { if (!quietSince) quietSince = now; if (now - quietSince >= holdMs) { clearInterval(iv); res(); } }
         else quietSince = 0;
-        if (!heard && now - t0 > 3000) { clearInterval(iv); res('never-started'); }
-        if (now - t0 > maxMs) { clearInterval(iv); res('timeout'); }
+        if ((!heard && now - t0 > 3000) || now - t0 > maxMs) { clearInterval(iv); res(); }
       }, 50);
     });
   }
+
   async function intervene(m) {
     $('status').textContent = 'Fraud detected. Letting the caller finish the sentence...';
-    const how = await waitForOutputSilence();
-    console.debug('[shield] intervene after', how);
+    await waitForOutputSilence();
     // 1. mute the caller, 2. warn the user, 3. end the session
     try { conv?.setVolume({ volume: 0 }); } catch {}
     $('status').textContent = 'Intervening.';
