@@ -245,6 +245,8 @@
   };
 
   $('hangup').onclick = () => endCall(true);
+  // debug hook for driving a call from the console: scamShield.say('Yes this is me')
+  window.scamShield = { say: t => { try { conv?.sendUserMessage(t); } catch (e) { console.warn(e); } }, get conv() { return conv; }, challenge: () => runChallenge(), get state() { return { challenged, referenceNo, callerAccepted, lastMode, callerTurnCount }; } };
 
   // The SDK delivers the agent's full sentence before the voice speaks it. Reveal it
   // word by word at speaking pace, starting when the voice starts, and send it to the
