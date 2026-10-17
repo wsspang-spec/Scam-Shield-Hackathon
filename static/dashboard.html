@@ -191,6 +191,7 @@
           const speaker = (src === 'user') ? 'USER' : 'CALLER';
           if (!text || lastText[speaker] === text) return;
           lastText[speaker] = text;
+          if (speaker === 'CALLER') { lastCallerArrival = Date.now(); lastCallerWords = text.split(/\s+/).length; }
           callWs?.send(JSON.stringify({ type: 'turn', speaker, text }));
         },
       });
@@ -216,9 +217,17 @@
     });
   }
 
+  // Track when the caller's latest sentence arrived and how long it should take to say.
+  let lastCallerArrival = 0, lastCallerWords = 0;
+  const MS_PER_WORD = 380;   // ~160 wpm, the agent's TTS pace
   async function intervene(m) {
     $('status').textContent = 'Fraud detected. Letting the caller finish the sentence...';
-    await waitForAgentToFinish();
+    // 1. wait at least the estimated speaking time of the flagged sentence
+    const minUntil = lastCallerArrival + lastCallerWords * MS_PER_WORD + 900;
+    const wait = Math.max(0, minUntil - Date.now());
+    if (wait) await new Promise(r => setTimeout(r, Math.min(wait, 15000)));
+    // 2. then, if the voice is still going, wait for it to stop
+    if (lastMode === 'speaking') await waitForAgentToFinish(6000);
     // 1. mute the caller, 2. warn the user, 3. end the session
     try { conv?.setVolume({ volume: 0 }); } catch {}
     $('status').textContent = 'Intervening.';
