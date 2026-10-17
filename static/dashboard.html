@@ -267,22 +267,25 @@
 
   function sysLine(text) { const el = document.createElement('div'); el.className = 'sys'; el.textContent = text; $('transcript').appendChild(el); scroll(); }
 
-  // ---------------- Verify by callback: shield dials the official line (another agent in the browser demo)
+  // ---------------- Verify by callback: shield dials the official line (another agent in the
+  // browser demo, Twilio in telephony mode), verifies the case, then hands the trusted line to
+  // the customer. Same identity questions as before, but now on a channel the customer initiated.
   const VERIFY_LINE = () => `Hi, I'm the call screening assistant for William Spangenberg. I'm calling to verify a fraud case. The reference number is ${referenceNo.split('').join(' ')}.`;
+  const HANDOFF_LINE = "Thank you. I'll bring William on the line now.";
+  let bankConv = null, bankPhase = 'greeting', bankSaid = '';
   async function verifyByCallback() {
     if (verifying || !referenceNo) return;
-    verifying = true;
+    verifying = true; bankPhase = 'greeting'; bankSaid = '';
     const bankId = ($('bankAgentId').value.trim() || DEFAULT_BANK_AGENT);
     localStorage.setItem('bankAgentId', bankId);
     sysLine('Shield is calling the number on the back of the card...');
     $('status').textContent = 'Calling the official line to verify ' + referenceNo + '...';
-    let bankConv = null, bankSaid = '';
+    $('alert').style.display = 'none';
     try {
       const sess = await fetch(`/api/agent-session?agent_id=${encodeURIComponent(bankId)}`).then(r => r.json());
       const opts = sess.conversation_token ? { conversationToken: sess.conversation_token, connectionType: 'webrtc' }
                  : sess.signed_url ? { signedUrl: sess.signed_url, connectionType: 'websocket' }
                  : { agentId: bankId, connectionType: 'webrtc' };
-      let greeted = false;
       bankConv = await Conversation.startSession({
         ...opts,
         onConnect: () => { try { bankConv?.setMicMuted(true); } catch {} },
@@ -292,34 +295,69 @@
         onMessage: m => {
           const text = (m.message ?? m.text ?? '').trim();
           const src = m.source ?? m.role ?? (lastMode === 'speaking' ? 'ai' : 'user');
-          if (!text || src === 'user') return;
+          if (!text) return;
+          if (src === 'user') {
+            if (bankPhase === 'customer' && !/call screening assistant|bring William/i.test(text)) {
+              const el = document.createElement('div'); el.className = 'line USER';
+              el.innerHTML = `<span class="who">USER (trusted line)</span>${esc(text)}`; $('transcript').appendChild(el); scroll();
+            }
+            return;
+          }
           const el = document.createElement('div'); el.className = 'line BANK';
           el.innerHTML = `<span class="who">BANK LINE</span>${esc(text)}`; $('transcript').appendChild(el); scroll();
-          if (!greeted) { greeted = true; setTimeout(async () => {
-            await waitForAgentToFinish(6000);
-            const el2 = document.createElement('div'); el2.className = 'line SHIELD';
-            el2.innerHTML = `<span class="who">SHIELD</span>${esc(VERIFY_LINE())}`; $('transcript').appendChild(el2); scroll();
-            try { bankConv.sendUserMessage(VERIFY_LINE()); } catch {}
-          }, 200); return; }
           bankSaid += ' ' + text;
-          if (/open|genuine|blocked|closed|confirm|yes/i.test(text) || /not see|no open case|did not place|no case/i.test(text)) {
-            setTimeout(async () => { await waitForAgentToFinish(9000); try { await bankConv.endSession(); } catch {} finishVerify(bankSaid); }, 300);
+
+          if (bankPhase === 'greeting') {
+            bankPhase = 'verifying';
+            setTimeout(async () => {
+              await waitForAgentToFinish(6000);
+              shieldLine(VERIFY_LINE()); try { bankConv.sendUserMessage(VERIFY_LINE()); } catch {}
+            }, 200);
+            return;
+          }
+          if (bankPhase === 'verifying') {
+            if (/not see|no open case|did not place|no case|don't see/i.test(text)) {
+              bankPhase = 'done';
+              setTimeout(async () => { await waitForAgentToFinish(9000); try { await bankConv.endSession(); } catch {} finishVerify(bankSaid); }, 300);
+            } else if (/open|genuine|available|is he/i.test(text)) {
+              bankPhase = 'handoff';
+              setTimeout(async () => {
+                await waitForAgentToFinish(8000);
+                shieldLine(HANDOFF_LINE); try { bankConv.sendUserMessage(HANDOFF_LINE); } catch {}
+                bankPhase = 'customer';
+                try { bankConv.setMicMuted(false); } catch {}
+                const v = $('verified'); v.className = 'ok';
+                v.textContent = `VERIFIED: case ${referenceNo} is genuine. You are now on a trusted line you initiated. Safe to verify your identity. Not scored.`;
+                $('tier').textContent = 'SAFE'; $('tier').className = 'SAFE'; $('tierlabel').textContent = 'Trusted line, customer-initiated'; $('bar').style.width = '0';
+                $('status').textContent = 'You are on the line with Chase. Go ahead.';
+                sysLine('Mic unmuted. The bank will verify you now; this is the channel you chose, not the one that chose you.');
+              }, 200);
+            }
+            return;
+          }
+          if (bankPhase === 'customer') {
+            if (/ships today|shipped|arrives? in five|anything else|good ?bye|have a (good|great)/i.test(text)) {
+              bankPhase = 'done';
+              setTimeout(async () => { await waitForAgentToFinish(12000); try { await bankConv.endSession(); } catch {} finishVerify(bankSaid); }, 300);
+            }
           }
         },
       });
     } catch (e) { sysLine('Could not reach the official line: ' + (e?.message || e)); verifying = false; }
   }
+  function shieldLine(text) { const el = document.createElement('div'); el.className = 'line SHIELD'; el.innerHTML = `<span class="who">SHIELD</span>${esc(text)}`; $('transcript').appendChild(el); scroll(); }
   let verifyDone = false;
   function finishVerify(said) {
     if (verifyDone) return; verifyDone = true;
-    const ok = /open|genuine|blocked|closed|confirm/i.test(said) && !/not see|no open case|did not place|no case/i.test(said);
+    const ok = /open|genuine|blocked|closed|confirm/i.test(said) && !/not see|no open case|did not place|no case|don't see/i.test(said);
+    try { bankConv?.setMicMuted(true); } catch {}
     const v = $('verified');
     if (ok) {
-      v.className = 'ok'; v.textContent = `VERIFIED on the official line: case ${referenceNo} is genuine. The original call was legitimate.`;
-      $('tier').textContent = 'SAFE'; $('tier').className = 'SAFE'; $('tierlabel').textContent = 'Verified with the bank'; $('bar').style.width = '0';
+      v.className = 'ok'; v.textContent = `RESOLVED on a trusted line: case ${referenceNo} verified, charges blocked, replacement card shipped.`;
+      $('tier').textContent = 'SAFE'; $('tier').className = 'SAFE'; $('tierlabel').textContent = 'Resolved with the bank'; $('bar').style.width = '0';
       $('alert').style.display = 'none';
-      $('pushTitle').textContent = `Fraud case ${referenceNo} verified`;
-      $('pushBody').textContent = 'Two charges in Dallas were blocked. Your card ending 4417 is closed and a replacement ships in 5 to 7 business days. No action needed.';
+      $('pushTitle').textContent = `Case ${referenceNo}: replacement card shipped`;
+      $('pushBody').textContent = 'Two charges in Dallas were blocked and card ending 4417 is closed. Your new card ships today and arrives in 5 to 7 business days. Dispute and provisional credit are in the app.';
     } else {
       v.className = 'bad'; v.textContent = `NOT VERIFIED: the bank has no case ${referenceNo}. The original caller was not Chase.`;
       $('tier').textContent = 'FRAUD'; $('tier').className = 'FRAUD'; $('tierlabel').textContent = 'Caller failed verification';
