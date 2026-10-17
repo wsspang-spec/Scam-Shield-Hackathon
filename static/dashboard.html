@@ -222,16 +222,21 @@
   function outputLevel() {
     try { const d = conv?.getOutputByteFrequencyData?.(); if (!d || !d.length) return 0; let s = 0; for (let i = 0; i < d.length; i++) s += d[i]; return s / d.length; } catch { return 0; }
   }
-  function waitForOutputSilence({ maxMs = 20000, silentMs = 450, threshold = 6 } = {}) {
+  // Measured on a real call: level 30-90 while speaking, decays to ~10 within ~1.5 s of
+  // silence; mode flips to 'listening' ~0.3 s after the voice stops. End-of-speech is
+  // either (listening and level < 30) or (level < 15) held for 300 ms.
+  function waitForOutputSilence({ maxMs = 20000, holdMs = 300 } = {}) {
     return new Promise(res => {
       const t0 = Date.now(); let heard = false, quietSince = 0;
       const iv = setInterval(() => {
         const lvl = outputLevel(); const now = Date.now();
-        if (lvl > threshold) { heard = true; quietSince = 0; }
-        else if (heard) { if (!quietSince) quietSince = now; if (now - quietSince >= silentMs) { clearInterval(iv); res('ended'); } }
-        else if (now - t0 > 2500 && lastMode !== 'speaking') { clearInterval(iv); res('never-started'); }
+        const quiet = (lastMode === 'listening' && lvl < 30) || lvl < 15;
+        if (lvl >= 30) heard = true;
+        if (heard && quiet) { if (!quietSince) quietSince = now; if (now - quietSince >= holdMs) { clearInterval(iv); res('ended'); } }
+        else quietSince = 0;
+        if (!heard && now - t0 > 3000) { clearInterval(iv); res('never-started'); }
         if (now - t0 > maxMs) { clearInterval(iv); res('timeout'); }
-      }, 60);
+      }, 50);
     });
   }
   async function intervene(m) {
