@@ -21,6 +21,17 @@ Scammer --> Twilio number --> Conference <-- your phone (server dials you in)
                       dashboard (live transcript, gauge, criteria)
 ```
 
+## The callback test
+
+When a call goes UNCERTAIN, the dashboard arms "Let Shield respond." Click it and the
+shield speaks to the caller on the customer's behalf: it declines to share personal
+details and asks for a reference number so the customer can call back on the number
+on their card. The caller's reaction is the verdict. A legitimate agent gives a
+reference and agrees (score drops to SAFE). A scammer refuses, warns the hold will
+drop, re-asks for the code (score jumps to FRAUD, shield hangs up). The customer never
+has to decide anything. Refusal of callback is the single strongest discriminator in
+the literature; see `docs/research.md`.
+
 ## Why it works
 
 The research behind the rubric is in `docs/research.md`. Short version: scam calls

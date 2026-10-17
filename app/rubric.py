@@ -34,6 +34,15 @@ by yes/no on specific transactions or says it will never ask for codes;
 identifying details unprompted)
 METADATA (+15 claimed institution inconsistent with the number or attestation)
 
+CALLBACK TEST: a USER turn beginning "[Call screening assistant]" means the
+protection system asked the CALLER for a reference number and offered a callback
+on the card's published number. Score the CALLER's very next turn hard:
+accepts, gives a reference or case number, or agrees to the callback -> apply the
+-30 callback negative and the -10 volunteers-details negative; tier should drop.
+Refuses, warns that hanging up loses money or protection, insists on staying on
+the line, or re-asks for a code -> apply +20 refuses-callback AND treat it as
+strong evidence; this is FRAUD if any other signal is present.
+
 Return JSON only, no prose, no code fences:
 {"score": 0-100, "tier": "SAFE"|"UNCERTAIN"|"FRAUD",
  "fired": [{"criterion": "...", "class": "dispositive"|"strong"|"moderate"|"weak", "quote": "exact caller words", "turn": n}],
