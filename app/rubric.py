@@ -39,7 +39,7 @@ Return JSON only, no prose, no code fences:
  "fired": [{"criterion": "...", "class": "dispositive"|"strong"|"moderate"|"weak", "quote": "exact caller words", "turn": n}],
  "negatives": [{"criterion": "...", "quote": "...", "turn": n}],
  "archetype": "bank_impersonation|government_impersonation|tech_support|family_emergency|refund_overpayment|debt_collection|utility|medicare|prize|other|none",
- "user_action": "one sentence the USER should do right now, or empty"}
+ "user_action": "one sentence the USER should do right now, or empty. For UNCERTAIN: advise declining to supply personal details and offering to call back on the number on the card. For FRAUD: hang up now."}
 
 Tiers: <20 SAFE, 20-54 UNCERTAIN, >=55 FRAUD. Any dispositive item plus any
 strong item is FRAUD regardless of total. If no CALLER request directed at the

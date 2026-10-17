@@ -144,7 +144,11 @@
       $('fired').innerHTML = (ev.fired || []).map(f => `<div class="fired ${f.class||'weak'}">${esc(f.criterion)}<span class="q">"${esc(f.quote||'')}"</span></div>`).join('') || '<div class="fired weak">none</div>';
       $('neg').innerHTML = (ev.negatives || []).map(f => `<div class="fired neg">${esc(f.criterion)}<span class="q">"${esc(f.quote||'')}"</span></div>`).join('') || '<div class="fired weak">none</div>';
     }
-    if (ev.type === 'alert') { $('alert').style.display = 'block'; $('alert').textContent = 'INTERVENTION: ' + (ev.user_action || 'Hang up.'); }
+    if (ev.type === 'alert') { $('alert').style.display = 'block'; $('alert').style.background = 'var(--fraud)'; $('alert').textContent = 'INTERVENTION: ' + (ev.user_action || 'Hang up.'); }
+    if (ev.type === 'score' && ev.tier === 'UNCERTAIN' && ev.user_action && $('alert').style.background !== 'var(--fraud)') {
+      $('alert').style.display = 'block'; $('alert').style.background = '#8a6d00'; $('alert').textContent = 'COACH: ' + ev.user_action;
+    }
+    if (ev.type === 'score' && ev.tier === 'SAFE' && $('alert').style.background !== 'var(--fraud)') { $('alert').style.display = 'none'; }
   }
   function reset() { $('transcript').innerHTML=''; $('alert').style.display='none'; $('tier').textContent='SAFE'; $('tier').className='SAFE'; $('tierlabel').textContent=TIERLABEL.SAFE; $('bar').style.width='0'; $('score').textContent='0'; $('arch').textContent='none'; $('rail').textContent='none'; $('loss').textContent='$0'; $('fired').innerHTML=''; $('neg').innerHTML=''; partialEls={}; lastText={}; }
   function scroll() { $('transcript').scrollTop = $('transcript').scrollHeight; }
