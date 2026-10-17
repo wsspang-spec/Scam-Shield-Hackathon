@@ -32,6 +32,20 @@ hang up and call back. Legitimate banks confirm data they already hold with yes/
 questions and invite you to call the number on your card. The guardrail encodes the
 dispositive signals; the model handles the gray zone.
 
+## Two ways to run a call
+
+**Browser demo mode (default for the hackathon).** An ElevenLabs Conversational AI
+agent plays the caller; you talk from the laptop mic. The dashboard at `/` has
+"Answer call." Transcript events from the agent SDK feed the scorer directly, so
+nothing in the detection path changes. On alert the page mutes the agent, plays
+the warning, and ends the session. Set up two agents from `agents/scammer_agent.md`
+and `agents/legit_agent.md`, paste the agent ID into the dashboard, click Answer.
+No Twilio needed.
+
+**Telephony mode (roadmap, code included).** A Twilio number fronts your real phone,
+Scribe transcribes both legs from the media stream, same scorer, warning injected
+into your leg via conference announce. Requires a paid Twilio number. See Setup.
+
 ## Setup
 
 ```bash

@@ -3,69 +3,122 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Scam Shield</title>
+<title>Scam Shield | Live Fraud Control</title>
 <style>
-  :root { --bg:#0b0f14; --panel:#121923; --text:#e8eef5; --muted:#8a98a8; --safe:#2ecc71; --warn:#f1c40f; --fraud:#ff4d4f; --caller:#ff9f43; --user:#54a0ff; }
+  :root { --bg:#0a0e14; --panel:#111823; --line:#1e2a3a; --text:#e8eef5; --muted:#8a98a8; --safe:#2ecc71; --warn:#f1c40f; --fraud:#ff4d4f; --caller:#ff9f43; --user:#54a0ff; --accent:#4f8cff; }
   * { box-sizing:border-box; }
-  body { margin:0; background:var(--bg); color:var(--text); font:16px/1.4 system-ui, -apple-system, Segoe UI, Roboto, sans-serif; }
-  header { display:flex; align-items:center; justify-content:space-between; padding:14px 24px; border-bottom:1px solid #1f2a37; }
-  header h1 { margin:0; font-size:20px; letter-spacing:.5px; }
-  #status { color:var(--muted); font-size:14px; }
-  main { display:grid; grid-template-columns: 1.4fr 1fr; gap:16px; padding:16px 24px; height:calc(100vh - 60px); }
-  .panel { background:var(--panel); border-radius:12px; padding:16px; overflow:auto; }
+  body { margin:0; background:var(--bg); color:var(--text); font:16px/1.4 system-ui,-apple-system,Segoe UI,Roboto,sans-serif; }
+  header { display:flex; align-items:center; justify-content:space-between; padding:12px 24px; border-bottom:1px solid var(--line); gap:16px; flex-wrap:wrap; }
+  header h1 { margin:0; font-size:18px; letter-spacing:1px; }
+  header h1 small { color:var(--muted); font-weight:400; letter-spacing:0; margin-left:10px; font-size:13px; }
+  #status { color:var(--muted); font-size:13px; }
+  .controls { display:flex; gap:8px; align-items:center; }
+  input[type=text] { background:#0d131c; color:var(--text); border:1px solid var(--line); padding:8px 10px; border-radius:8px; width:300px; font-size:13px; }
+  button { background:var(--accent); color:#fff; border:0; padding:9px 16px; border-radius:8px; cursor:pointer; font-weight:600; }
+  button.secondary { background:#1f2a37; border:1px solid #2c3a4b; }
+  button:disabled { opacity:.4; cursor:default; }
+  main { display:grid; grid-template-columns:1.35fr 1fr; gap:16px; padding:16px 24px; height:calc(100vh - 62px); }
+  .panel { background:var(--panel); border-radius:12px; padding:16px; overflow:auto; border:1px solid var(--line); }
   #transcript .line { padding:6px 10px; margin:4px 0; border-radius:8px; }
   #transcript .CALLER { border-left:4px solid var(--caller); }
   #transcript .USER { border-left:4px solid var(--user); }
   #transcript .partial { opacity:.5; font-style:italic; }
   .who { font-size:12px; color:var(--muted); margin-right:8px; }
-  #tier { font-size:64px; font-weight:800; text-align:center; padding:24px 0 8px; letter-spacing:2px; }
+  #tier { font-size:60px; font-weight:800; text-align:center; padding:18px 0 4px; letter-spacing:2px; }
   #tier.SAFE { color:var(--safe);} #tier.UNCERTAIN { color:var(--warn);} #tier.FRAUD { color:var(--fraud); animation:pulse 1s infinite; }
+  #tierlabel { text-align:center; color:var(--muted); font-size:13px; margin-bottom:12px; }
   @keyframes pulse { 50% { opacity:.55; } }
-  .gauge { height:18px; background:#1f2a37; border-radius:9px; overflow:hidden; margin:0 0 16px; }
+  .gauge { height:16px; background:#1f2a37; border-radius:8px; overflow:hidden; margin:0 0 16px; }
   .gauge > div { height:100%; width:0; background:linear-gradient(90deg,var(--safe),var(--warn),var(--fraud)); transition:width .4s; }
-  .kv { display:flex; justify-content:space-between; font-size:14px; color:var(--muted); margin:4px 0; }
-  .kv b { color:var(--text); }
-  h3 { margin:18px 0 8px; font-size:13px; text-transform:uppercase; color:var(--muted); letter-spacing:1px; }
+  .grid { display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:8px; }
+  .stat { background:#0d131c; border:1px solid var(--line); border-radius:10px; padding:10px 12px; }
+  .stat .k { font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:.8px; }
+  .stat .v { font-size:17px; font-weight:700; margin-top:2px; }
+  .stat .v.small { font-size:14px; font-weight:600; }
+  h3 { margin:16px 0 8px; font-size:12px; text-transform:uppercase; color:var(--muted); letter-spacing:1px; }
   .fired { padding:8px 10px; margin:6px 0; border-radius:8px; background:#1a2230; font-size:14px; }
   .fired.dispositive { border-left:4px solid var(--fraud); } .fired.strong { border-left:4px solid #ff7a45; }
   .fired.moderate { border-left:4px solid var(--warn); } .fired.weak { border-left:4px solid var(--muted); }
+  .fired.neg { border-left:4px solid var(--safe); }
   .fired .q { color:var(--muted); font-style:italic; display:block; }
   #alert { display:none; background:var(--fraud); color:#fff; padding:14px; border-radius:10px; font-weight:700; margin:12px 0; }
-  button { background:#1f2a37; color:var(--text); border:1px solid #2c3a4b; padding:8px 14px; border-radius:8px; cursor:pointer; }
-  @media (max-width:900px) { main { grid-template-columns:1fr; height:auto; } }
+  .foot { display:flex; justify-content:space-between; align-items:center; margin-top:14px; font-size:12px; color:var(--muted); }
+  @media (max-width:900px) { main { grid-template-columns:1fr; height:auto; } input[type=text]{ width:180px; } }
 </style>
 </head>
 <body>
 <header>
-  <h1>SCAM SHIELD</h1>
+  <h1>SCAM SHIELD <small>Real-time fraud control for the customer side of the call</small></h1>
+  <div class="controls">
+    <input type="text" id="agentId" placeholder="ElevenLabs agent ID (caller persona)">
+    <button id="answer">Answer call</button>
+    <button id="hangup" class="secondary" disabled>Hang up</button>
+  </div>
   <div id="status">waiting for call</div>
 </header>
 <main>
   <section class="panel" id="transcript"></section>
   <section class="panel">
     <div id="tier" class="SAFE">SAFE</div>
+    <div id="tierlabel">No extraction attempt detected</div>
     <div class="gauge"><div id="bar"></div></div>
-    <div class="kv"><span>Score</span><b id="score">0</b></div>
-    <div class="kv"><span>Archetype</span><b id="arch">none</b></div>
-    <div class="kv"><span>Decision source</span><b id="src">-</b></div>
-    <div class="kv"><span>Latency (utterance to score)</span><b id="lat">-</b></div>
-    <div class="kv"><span>Trace</span><b id="trace">-</b></div>
+    <div class="grid">
+      <div class="stat"><div class="k">Risk score</div><div class="v" id="score">0</div></div>
+      <div class="stat"><div class="k">Fraud typology</div><div class="v small" id="arch">none</div></div>
+      <div class="stat"><div class="k">Payment rail targeted</div><div class="v small" id="rail">none</div></div>
+      <div class="stat"><div class="k">Typical loss if completed</div><div class="v" id="loss">$0</div></div>
+      <div class="stat"><div class="k">Decision source</div><div class="v small" id="src">-</div></div>
+      <div class="stat"><div class="k">Utterance to decision</div><div class="v" id="lat">-</div></div>
+    </div>
     <div id="alert"></div>
-    <h3>Fired criteria</h3>
+    <h3>Fraud indicators (caller's words)</h3>
     <div id="fired"></div>
     <h3>Legitimacy evidence</h3>
     <div id="neg"></div>
-    <div style="margin-top:18px"><button id="notscam">Not a scam</button></div>
+    <div class="foot">
+      <span>Trace <span id="trace">-</span></span>
+      <button id="notscam" class="secondary">Mark false positive</button>
+    </div>
   </section>
 </main>
-<script>
+
+<script type="module">
+  import { Conversation } from 'https://cdn.jsdelivr.net/npm/@elevenlabs/client/+esm';
+
   const $ = id => document.getElementById(id);
-  let traceId = null, partialEls = {};
+  let traceId = null, partialEls = {}, conv = null, callWs = null, lastText = {};
+
+  // Financial framing. Loss figures: FTC 2025 phone-initiated median $2,210 (older adults),
+  // Hiya Q4 2024 Medicare avg $539. See docs/research.md for sources.
+  const TYPOLOGY = {
+    bank_impersonation:       ['APP fraud / OTP interception',        2210],
+    government_impersonation: ['Government impersonation / coercion', 2210],
+    tech_support:             ['Phantom Hacker / account takeover',   2210],
+    family_emergency:         ['Family emergency / courier cash',     2210],
+    refund_overpayment:       ['Refund overpayment / gift card',      2210],
+    debt_collection:          ['Phantom debt collection',             2210],
+    utility:                  ['Utility shutoff extortion',           2210],
+    medicare:                 ['Medicare / benefits harvesting',       539],
+    prize:                    ['Prize / sweepstakes advance fee',     2210],
+    guardrail:                ['Credential or payment extraction',    2210],
+    other:                    ['Unclassified social engineering',     2210],
+    none:                     ['none', 0],
+  };
+  const RAILS = [
+    [/gift card|apple card|google play/i, 'Gift cards'], [/bitcoin|crypto|kiosk|qr code/i, 'Crypto kiosk'],
+    [/wire|safe account|secured account|federal protection|federal reserve/i, 'Wire to "safe account"'],
+    [/zelle|pay yourself|send money to yourself/i, 'Zelle / P2P'], [/cash|gold|courier/i, 'Cash or gold courier'],
+    [/code|otp|one[- ]time|pin|password|cvv/i, 'OTP / credential read-back'],
+  ];
+  const TIERLABEL = { SAFE:'No extraction attempt detected', UNCERTAIN:'Pressure cues present, watching for a request', FRAUD:'Extraction attempt in progress' };
+
+  // ---------------- dashboard feed
   const proto = location.protocol === 'https:' ? 'wss' : 'ws';
-  const ws = new WebSocket(`${proto}://${location.host}/dashboard`);
-  ws.onmessage = e => handle(JSON.parse(e.data));
+  const dash = new WebSocket(`${proto}://${location.host}/dashboard`);
+  dash.onmessage = e => handle(JSON.parse(e.data));
+
   function handle(ev) {
-    if (ev.type === 'status') { $('status').textContent = ev.text; if (ev.text.startsWith('Inbound')) reset(); }
+    if (ev.type === 'status') { $('status').textContent = ev.text; if (/started|Inbound/.test(ev.text)) reset(); }
     if (ev.type === 'partial') {
       let el = partialEls[ev.speaker];
       if (!el) { el = document.createElement('div'); el.className = `line partial ${ev.speaker}`; $('transcript').appendChild(el); partialEls[ev.speaker] = el; }
@@ -78,20 +131,94 @@
     }
     if (ev.type === 'score') {
       traceId = ev.trace_id || traceId;
-      $('tier').textContent = ev.tier; $('tier').className = ev.tier;
+      $('tier').textContent = ev.tier; $('tier').className = ev.tier; $('tierlabel').textContent = TIERLABEL[ev.tier] || '';
       $('bar').style.width = Math.min(100, ev.score) + '%';
-      $('score').textContent = ev.score; $('arch').textContent = ev.archetype || 'none';
-      $('src').textContent = ev.source === 'guardrail' ? 'PRISM guardrail (blocked)' : 'model via Nicrron';
+      $('score').textContent = ev.score;
+      const [label, loss] = TYPOLOGY[ev.archetype] || TYPOLOGY.other;
+      $('arch').textContent = label;
+      $('loss').textContent = ev.tier === 'SAFE' ? '$0' : '$' + loss.toLocaleString();
+      const quotes = (ev.fired || []).map(f => (f.quote || '') + ' ' + (f.criterion || '')).join(' ');
+      const rail = RAILS.find(([rx]) => rx.test(quotes)); $('rail').textContent = rail ? rail[1] : 'none';
+      $('src').textContent = ev.source === 'guardrail' ? 'PRISM guardrail (blocked pre-model)' : 'Model via Nicrron';
       $('lat').textContent = Math.round(ev.latency_ms) + ' ms'; $('trace').textContent = traceId;
       $('fired').innerHTML = (ev.fired || []).map(f => `<div class="fired ${f.class||'weak'}">${esc(f.criterion)}<span class="q">"${esc(f.quote||'')}"</span></div>`).join('') || '<div class="fired weak">none</div>';
-      $('neg').innerHTML = (ev.negatives || []).map(f => `<div class="fired weak" style="border-left-color:var(--safe)">${esc(f.criterion)}<span class="q">"${esc(f.quote||'')}"</span></div>`).join('') || '<div class="fired weak">none</div>';
+      $('neg').innerHTML = (ev.negatives || []).map(f => `<div class="fired neg">${esc(f.criterion)}<span class="q">"${esc(f.quote||'')}"</span></div>`).join('') || '<div class="fired weak">none</div>';
     }
-    if (ev.type === 'alert') { $('alert').style.display = 'block'; $('alert').textContent = 'WARNING PLAYED: ' + (ev.user_action || 'Hang up.'); }
+    if (ev.type === 'alert') { $('alert').style.display = 'block'; $('alert').textContent = 'INTERVENTION: ' + (ev.user_action || 'Hang up.'); }
   }
-  function reset() { $('transcript').innerHTML = ''; $('alert').style.display = 'none'; $('tier').textContent='SAFE'; $('tier').className='SAFE'; $('bar').style.width='0'; $('fired').innerHTML=''; $('neg').innerHTML=''; partialEls = {}; }
+  function reset() { $('transcript').innerHTML=''; $('alert').style.display='none'; $('tier').textContent='SAFE'; $('tier').className='SAFE'; $('tierlabel').textContent=TIERLABEL.SAFE; $('bar').style.width='0'; $('score').textContent='0'; $('arch').textContent='none'; $('rail').textContent='none'; $('loss').textContent='$0'; $('fired').innerHTML=''; $('neg').innerHTML=''; partialEls={}; lastText={}; }
   function scroll() { $('transcript').scrollTop = $('transcript').scrollHeight; }
   function esc(s) { return String(s).replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c])); }
-  $('notscam').onclick = () => ws.send(JSON.stringify({type:'feedback', trace_id: traceId}));
+  $('notscam').onclick = () => dash.send(JSON.stringify({type:'feedback', trace_id: traceId}));
+
+  // ---------------- browser call mode (ElevenLabs agent = caller)
+  $('agentId').value = localStorage.getItem('agentId') || '';
+
+  $('answer').onclick = async () => {
+    const agentId = $('agentId').value.trim();
+    if (!agentId) { $('status').textContent = 'Enter the ElevenLabs agent ID first.'; return; }
+    localStorage.setItem('agentId', agentId);
+    $('answer').disabled = true; $('hangup').disabled = false;
+    $('status').textContent = 'Connecting...';
+
+    callWs = new WebSocket(`${proto}://${location.host}/browser-call`);
+    callWs.onmessage = e => { const m = JSON.parse(e.data); if (m.type === 'alert') intervene(m); };
+    await new Promise(r => callWs.onopen = r);
+
+    const sess = await fetch(`/api/agent-session?agent_id=${encodeURIComponent(agentId)}`).then(r => r.json());
+    const opts = sess.conversation_token ? { conversationToken: sess.conversation_token, connectionType: 'webrtc' }
+               : sess.signed_url ? { signedUrl: sess.signed_url, connectionType: 'websocket' }
+               : { agentId, connectionType: 'webrtc' };
+
+    try {
+      await navigator.mediaDevices.getUserMedia({ audio: true });
+      conv = await Conversation.startSession({
+        ...opts,
+        onConnect: () => $('status').textContent = 'Call connected. Agent is the caller.',
+        onDisconnect: () => { $('status').textContent = 'Call ended.'; endCall(false); },
+        onError: e => $('status').textContent = 'Agent error: ' + (e?.message || e),
+        onMessage: m => {
+          // SDK shapes seen: {message, source:'user'|'ai'} and {text, role}. Handle both.
+          const text = (m.message ?? m.text ?? '').trim();
+          const src = m.source ?? m.role ?? 'ai';
+          const speaker = (src === 'user') ? 'USER' : 'CALLER';
+          if (!text || lastText[speaker] === text) return;
+          lastText[speaker] = text;
+          callWs?.send(JSON.stringify({ type: 'turn', speaker, text }));
+        },
+      });
+    } catch (e) { $('status').textContent = 'Could not start call: ' + (e?.message || e); endCall(false); }
+  };
+
+  $('hangup').onclick = () => endCall(true);
+
+  async function intervene(m) {
+    // 1. mute the caller, 2. warn the user, 3. end the session
+    try { conv?.setVolume({ volume: 0 }); } catch {}
+    await playWarning(m.user_action);
+    endCall(true);
+  }
+
+  function playWarning(text) {
+    return new Promise(res => {
+      const a = new Audio('/static/warning.mp3');
+      a.onended = res; a.onerror = () => speak(text, res);
+      a.play().catch(() => speak(text, res));
+    });
+  }
+  function speak(text, done) {
+    const u = new SpeechSynthesisUtterance('Warning. This call shows signs of a scam. ' + (text || 'Hang up now and call the number on the back of your card.'));
+    u.rate = 1.05; u.onend = done; speechSynthesis.speak(u);
+  }
+
+  async function endCall(sendEnd) {
+    try { await conv?.endSession(); } catch {}
+    conv = null;
+    if (sendEnd) { try { callWs?.send(JSON.stringify({ type: 'end' })); } catch {} }
+    try { callWs?.close(); } catch {}
+    callWs = null;
+    $('answer').disabled = false; $('hangup').disabled = true;
+  }
 </script>
 </body>
 </html>

@@ -29,9 +29,12 @@ from .bus import bus
 from .scorer import CallState, Scorer
 from .transcriber import ScribeSession
 
+from .browser_call import router as browser_router
+
 ROOT = Path(__file__).resolve().parent.parent
 app = FastAPI(title="Scam Shield")
 app.mount("/static", StaticFiles(directory=ROOT / "static"), name="static")
+app.include_router(browser_router)
 
 # conference name -> live call context
 CALLS: dict[str, dict] = {}
