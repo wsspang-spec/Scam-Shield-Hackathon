@@ -86,7 +86,7 @@
   import { Conversation } from 'https://cdn.jsdelivr.net/npm/@elevenlabs/client/+esm';
 
   const $ = id => document.getElementById(id);
-  let traceId = null, partialEls = {}, conv = null, callWs = null, lastText = {};
+  let traceId = null, partialEls = {}, conv = null, callWs = null, lastText = {}, lastMode = 'listening';
 
   // Financial framing. Loss figures: FTC 2025 phone-initiated median $2,210 (older adults),
   // Hiya Q4 2024 Medicare avg $539. See docs/research.md for sources.
@@ -177,10 +177,13 @@
         onConnect: () => $('status').textContent = 'Call connected. Agent is the caller.',
         onDisconnect: () => { $('status').textContent = 'Call ended.'; endCall(false); },
         onError: e => $('status').textContent = 'Agent error: ' + (e?.message || e),
+        onModeChange: ({ mode }) => { lastMode = mode; },
         onMessage: m => {
-          // SDK shapes seen: {message, source:'user'|'ai'} and {text, role}. Handle both.
+          console.debug('[el onMessage]', JSON.stringify(m));
+          // SDK shapes seen: {message, source:'user'|'ai'} and {text, role}. Fall back to
+          // mode: if the agent is speaking, the message is the agent's.
           const text = (m.message ?? m.text ?? '').trim();
-          const src = m.source ?? m.role ?? 'ai';
+          const src = m.source ?? m.role ?? (lastMode === 'speaking' ? 'ai' : 'user');
           const speaker = (src === 'user') ? 'USER' : 'CALLER';
           if (!text || lastText[speaker] === text) return;
           lastText[speaker] = text;
