@@ -237,13 +237,40 @@
           if (!text || lastText[speaker] === text) return;
           if (speaker === 'USER' && challenged && text.includes('call screening assistant')) return;
           lastText[speaker] = text;
-          callWs?.send(JSON.stringify({ type: 'turn', speaker, text }));
+          if (speaker === 'CALLER') revealCallerTurn(text);
+          else callWs?.send(JSON.stringify({ type: 'turn', speaker, text }));
         },
       });
     } catch (e) { $('status').textContent = 'Could not start call: ' + (e?.message || e); endCall(false); }
   };
 
   $('hangup').onclick = () => endCall(true);
+
+  // The SDK delivers the agent's full sentence before the voice speaks it. Reveal it
+  // word by word at speaking pace, starting when the voice starts, and send it to the
+  // scorer only when the sentence has been heard. Keeps transcript, audio and verdict in sync.
+  const WORD_MS = 330;  // ~180 wpm
+  let revealQueue = Promise.resolve();
+  function revealCallerTurn(text) {
+    revealQueue = revealQueue.then(() => new Promise(async resolve => {
+      const words = text.split(/\s+/);
+      // wait (briefly) for the voice to start
+      const t0 = Date.now();
+      while (lastMode !== 'speaking' && Date.now() - t0 < 2500) await new Promise(r => setTimeout(r, 50));
+      let i = 0, finished = false;
+      const flush = () => { if (finished) return; finished = true; handle({ type: 'partial', speaker: 'CALLER', text }); callWs?.send(JSON.stringify({ type: 'turn', speaker: 'CALLER', text })); resolve(); };
+      const onMode = mode => { if (mode === 'listening' && i > 0) { modeWaiters = modeWaiters.filter(w => w !== onMode); flush(); } };
+      modeWaiters.push(onMode);
+      const tick = () => {
+        if (finished) return;
+        i++;
+        handle({ type: 'partial', speaker: 'CALLER', text: words.slice(0, i).join(' ') });
+        if (i >= words.length) { modeWaiters = modeWaiters.filter(w => w !== onMode); flush(); }
+        else setTimeout(tick, WORD_MS);
+      };
+      tick();
+    }));
+  }
 
   // ---------------- Shield speaks for the customer (callback test)
   // The caller's reaction to a callback request is the strongest single discriminator
