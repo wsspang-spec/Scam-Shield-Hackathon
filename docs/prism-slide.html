@@ -1,0 +1,31 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<style>
+  html,body{margin:0;width:1920px;height:1080px;overflow:hidden;background:#0a0e14;font-family:-apple-system,"Segoe UI",Helvetica,Arial,sans-serif;color:#e8eef5}
+  .bg{position:absolute;inset:0;background:radial-gradient(900px 600px at 80% 20%, rgba(79,140,255,.18), transparent 60%),radial-gradient(800px 520px at 15% 90%, rgba(46,204,113,.12), transparent 60%),#0a0e14}
+  .grid{position:absolute;inset:0;background-image:linear-gradient(rgba(255,255,255,.035) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.035) 1px,transparent 1px);background-size:64px 64px}
+  h1{position:absolute;left:120px;top:90px;margin:0;font-size:64px;font-weight:800;letter-spacing:2px}
+  h1 small{display:block;font-size:28px;color:#8a98a8;font-weight:400;letter-spacing:0;margin-top:10px}
+  .cards{position:absolute;left:120px;right:120px;top:290px;display:grid;grid-template-columns:repeat(3,1fr);gap:32px}
+  .card{background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.1);border-radius:18px;padding:34px 36px;min-height:420px}
+  .n{font-size:22px;color:#4f8cff;font-weight:700;letter-spacing:2px}
+  .t{font-size:40px;font-weight:800;margin:10px 0 18px}
+  .d{font-size:26px;color:#b8c4d2;line-height:1.4}
+  .d b{color:#e8eef5}
+  code{font-family:Menlo,monospace;font-size:22px;background:rgba(255,255,255,.07);padding:2px 8px;border-radius:6px;color:#8df0b8}
+  .stack{position:absolute;left:120px;bottom:80px;display:flex;gap:18px;font-size:26px;color:#8a98a8}
+  .stack span{padding:12px 20px;border:1px solid rgba(255,255,255,.1);border-radius:12px;background:rgba(255,255,255,.03)}
+  .stack b{color:#e8eef5}
+</style></head><body>
+<div class="bg"></div><div class="grid"></div>
+<h1>BUILT ON PRISM BY BLOCK CONVEY<small>Trust &amp; Risk track: the three required proofs</small></h1>
+<div class="cards">
+  <div class="card"><div class="n">PROOF 1</div><div class="t">Guardrail</div>
+    <div class="d">Block mode, called <b>before the model</b> on every turn. Blocks OTP, PIN, SSN and card read-back, irreversible payment rails, secrecy instructions.<br><br>Shown blocking a live run at <code>0 ms</code>.</div></div>
+  <div class="card"><div class="n">PROOF 2</div><div class="t">Block check</div>
+    <div class="d">The run is traced under the <b>same trace ID</b>: <code>model_called: false</code>, <code>block_honoured: true</code>.<br><br>Structurally the only outcome: the guardrail sits in front of the model, not inside the prompt.</div></div>
+  <div class="card"><div class="n">PROOF 3</div><div class="t">Root cause</div>
+    <div class="d">Five runs, three blocked. Bank, government and tech-support pretexts <b>converge on one extraction step</b>: credential read-back.<br><br>Improve loop: v2 guardrail flagged "billing zip code" as a code request. Found in a trace, fixed in v3.</div></div>
+</div>
+<div class="stack"><span><b>Nicrron</b> every model call</span><span><b>ElevenLabs</b> callers and shield voice</span><span><b>PRISM</b> every decision</span><span><b>Twilio</b> telephony mode in repo</span></div>
+</body></html>
