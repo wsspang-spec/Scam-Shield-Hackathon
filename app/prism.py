@@ -122,13 +122,27 @@ def _ingest_payload(record: dict) -> dict:
     so the guardrail proofs survive the mapping.
     """
     output = record.get("output")
+    blocked = bool(record.get("blocked"))
     reserved = {"input", "output", "model", "latency_ms", "session_id", "project_id"}
     payload = {
         "project_id": config.PRISM_PROJECT,
         "session_id": record.get("session_id") or record.get("trace_id"),
-        "model": record.get("model") or "guardrail",
+        # Must be a real model name. The Traces list silently drops rows whose
+        # model it does not recognise, so a literal "guardrail" here makes the
+        # blocked run invisible in the console -- the block shows on the
+        # Guardrails page and nowhere else. Send the model that WOULD have run;
+        # metadata.model_called records that it did not. The Enforcement Check
+        # does not read this field, so naming it does not affect the verdict.
+        "model": record.get("model") or config.LLM_MODEL or "guardrail",
         "input_messages": [{"role": "user", "content": record.get("input", "")}],
-        "output_message": output if isinstance(output, str) else json.dumps(output),
+        # We send spanless traces, and the Enforcement Check reads a spanless
+        # trace that carries output as proof the model ran anyway
+        # (output_after_block -> "Not honoured"). A blocked run produced no
+        # model output, so it must ship none. The field is required, so "" is
+        # the only way to say that; omitting it 422s. metadata and model are
+        # NOT consulted by the check, so model_called/block_honoured below are
+        # for our own log, not evidence PRISM reads.
+        "output_message": "" if blocked else (output if isinstance(output, str) else json.dumps(output)),
         # Validated as an int: a float 422s with "int_from_float". The
         # fractional milliseconds stay in the local log.
         "latency_ms": int(round(record.get("latency_ms") or 0)),
@@ -137,9 +151,10 @@ def _ingest_payload(record: dict) -> dict:
     # trace_id is idempotent: re-sending one returns the EXISTING trace instead
     # of storing a new one. A call scores many windows, so sending the call id
     # every time would collapse them into the first trace. Send it only for the
-    # guardrail-blocked record -- the one the Guardrails page matches against
-    # its enforcement check -- and let the rest group by session_id.
-    if record.get("blocked") and record.get("trace_id"):
+    # guardrail-blocked record -- without it the Enforcement Check has nothing
+    # to match and reports trace_not_found, which is not a pass -- and let the
+    # rest group by session_id.
+    if blocked and record.get("trace_id"):
         payload["trace_id"] = record["trace_id"]
     return payload
 
