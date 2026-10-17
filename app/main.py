@@ -53,9 +53,10 @@ async def dashboard_ws(ws: WebSocket):
         while True:
             msg = await ws.receive_text()
             data = json.loads(msg)
-            if data.get("type") == "feedback":  # "Not a scam" button
+            if data.get("type") == "feedback":  # "Mark false positive" button or callback verification result
+                payload = {k: v for k, v in data.items() if k not in ("type", "trace_id")} or {"not_a_scam": True}
                 await prism.send_trace(data.get("trace_id", "unknown"), step="user_feedback",
-                                       input="", output={"not_a_scam": True}, latency_ms=0, blocked=False)
+                                       input="", output=payload, latency_ms=0, blocked=False)
                 await bus.publish({"type": "feedback", "trace_id": data.get("trace_id")})
     except WebSocketDisconnect:
         bus.disconnect(ws)

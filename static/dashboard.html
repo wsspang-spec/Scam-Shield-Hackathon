@@ -19,6 +19,16 @@
   button:disabled { opacity:.4; cursor:default; }
   button#shield.armed { background:#8a6d00; animation:pulse 1.2s infinite; }
   #transcript .SHIELD { border-left:4px solid var(--safe); background:#0f1f17; }
+  #transcript .BANK { border-left:4px solid #a78bfa; background:#161326; }
+  #transcript .sys { color:var(--muted); font-size:13px; font-style:italic; padding:6px 10px; }
+  #push { display:none; margin:12px 0; background:#f5f5f7; color:#111; border-radius:16px; padding:12px 14px; box-shadow:0 8px 30px rgba(0,0,0,.5); font-size:14px; }
+  #push .app { display:flex; align-items:center; gap:8px; font-size:12px; color:#555; margin-bottom:4px; }
+  #push .app b { color:#117aca; }
+  #push .title { font-weight:700; margin-bottom:2px; }
+  #push .cta { margin-top:8px; display:inline-block; background:#117aca; color:#fff; padding:6px 12px; border-radius:8px; font-weight:600; }
+  #verified { display:none; margin:12px 0; padding:12px 14px; border-radius:10px; font-weight:700; }
+  #verified.ok { display:block; background:#123d2a; color:#8df0b8; border:1px solid var(--safe); }
+  #verified.bad { display:block; background:#3d1216; color:#ffb3b5; border:1px solid var(--fraud); }
   main { display:grid; grid-template-columns:1.35fr 1fr; gap:16px; padding:16px 24px; height:calc(100vh - 62px); }
   .panel { background:var(--panel); border-radius:12px; padding:16px; overflow:auto; border:1px solid var(--line); }
   #transcript .line { padding:6px 10px; margin:4px 0; border-radius:8px; }
@@ -52,7 +62,8 @@
 <header>
   <h1>SCAM SHIELD <small>Real-time fraud control for the customer side of the call</small></h1>
   <div class="controls">
-    <input type="text" id="agentId" placeholder="ElevenLabs agent ID (caller persona)">
+    <input type="text" id="agentId" placeholder="Caller agent ID">
+    <input type="text" id="bankAgentId" placeholder="Bank official-line agent ID" style="width:220px">
     <button id="answer">Answer call</button>
     <button id="hangup" class="secondary" disabled>Hang up</button>
     <button id="shield" class="secondary" disabled title="Shield speaks to the caller on your behalf and asks for a callback">Let Shield respond</button>
@@ -74,6 +85,13 @@
       <div class="stat"><div class="k">Utterance to decision</div><div class="v" id="lat">-</div></div>
     </div>
     <div id="alert"></div>
+    <div id="verified"></div>
+    <div id="push">
+      <div class="app"><span style="display:inline-block;width:14px;height:14px;border-radius:4px;background:#117aca"></span><b>Chase</b> &middot; now</div>
+      <div class="title" id="pushTitle"></div>
+      <div id="pushBody"></div>
+      <span class="cta">Open Chase app</span>
+    </div>
     <h3>Fraud indicators (caller's words)</h3>
     <div id="fired"></div>
     <h3>Legitimacy evidence</h3>
@@ -90,6 +108,8 @@
 
   const $ = id => document.getElementById(id);
   let traceId = null, partialEls = {}, conv = null, callWs = null, lastText = {}, lastMode = 'listening';
+  let referenceNo = null, callerAccepted = false, verifying = false;
+  const DEFAULT_BANK_AGENT = 'agent_7001m55g956kfsxvdsqcngxkpy3j';
 
   // Financial framing. Loss figures: FTC 2025 phone-initiated median $2,210 (older adults),
   // Hiya Q4 2024 Medicare avg $539. See docs/research.md for sources.
@@ -127,6 +147,14 @@
       if (!el) { el = document.createElement('div'); el.className = `line partial ${ev.speaker}`; $('transcript').appendChild(el); partialEls[ev.speaker] = el; }
       el.innerHTML = `<span class="who">${ev.speaker}</span>${esc(ev.text)}`; scroll();
     }
+    if (ev.type === 'turn' && ev.speaker === 'CALLER' && challenged && !referenceNo) {
+      const m = ev.text.match(/(?:reference|case)\s*(?:number|no\.?|#)?\s*(?:is|:)?\s*((?:[A-Z]\s?){0,3}(?:\d\s?){5,8})/i);
+      if (m) {
+        referenceNo = m[1].replace(/\s+/g, '').toUpperCase(); callerAccepted = true;
+        sysLine('Reference captured: ' + referenceNo + '. Ending this call and verifying on the official line.');
+        setTimeout(async () => { await waitForAgentToFinish(9000); if (conv) endCall(true); }, 300);
+      }
+    }
     if (ev.type === 'turn') {
       const p = partialEls[ev.speaker]; if (p) { p.remove(); delete partialEls[ev.speaker]; }
       const el = document.createElement('div'); el.className = `line ${ev.speaker}`;
@@ -150,18 +178,26 @@
     if (ev.type === 'alert') { $('alert').style.display = 'block'; $('alert').style.background = 'var(--fraud)'; $('alert').textContent = 'INTERVENTION: ' + (ev.user_action || 'Hang up.'); }
     if (ev.type === 'score' && ev.tier === 'UNCERTAIN' && $('alert').style.background !== 'var(--fraud)') {
       $('alert').style.display = 'block'; $('alert').style.background = '#8a6d00';
-      $('alert').textContent = challenged ? 'CALLBACK TEST ISSUED: watching how the caller responds' : 'COACH: ' + (ev.user_action || 'Do not give out personal details. Offer to call back on the number on your card.');
-      if (conv && !challenged) { $('shield').disabled = false; $('shield').classList.add('armed'); }
+      $('alert').textContent = challenged ? 'CALLBACK TEST ISSUED: watching how the caller responds' : 'Caller is requesting personal details. Shield is stepping in.';
+      const firedText = (ev.fired || []).map(f => (f.criterion || '') + ' ' + (f.quote || '')).join(' ');
+      const asksIdentity = /identity|supply|date of birth|dob|zip|address|account number|social|verify/i.test(firedText);
+      if (conv && !challenged && asksIdentity) runChallenge();
+      else if (conv && !challenged) { $('shield').disabled = false; $('shield').classList.add('armed'); }
+    }
+    if (ev.type === 'score' && challenged && !referenceNo) {
+      const negText = (ev.negatives || []).map(n => (n.criterion || '') + ' ' + (n.quote || '')).join(' ');
+      if (/callback|reference|case/i.test(negText)) callerAccepted = true;
     }
     if (ev.type === 'score' && ev.tier === 'SAFE' && $('alert').style.background !== 'var(--fraud)') { $('alert').style.display = 'none'; }
   }
-  function reset() { challenged = false; $('shield').disabled = true; $('shield').classList.remove('armed'); $('transcript').innerHTML=''; $('alert').style.display='none'; $('tier').textContent='SAFE'; $('tier').className='SAFE'; $('tierlabel').textContent=TIERLABEL.SAFE; $('bar').style.width='0'; $('score').textContent='0'; $('arch').textContent='none'; $('rail').textContent='none'; $('loss').textContent='$0'; $('fired').innerHTML=''; $('neg').innerHTML=''; partialEls={}; lastText={}; }
+  function reset() { challenged = false; referenceNo = null; callerAccepted = false; verifying = false; verifyDone = false; $('verified').className=''; $('verified').style.display='none'; $('push').style.display='none'; $('shield').disabled = true; $('shield').classList.remove('armed'); $('transcript').innerHTML=''; $('alert').style.display='none'; $('tier').textContent='SAFE'; $('tier').className='SAFE'; $('tierlabel').textContent=TIERLABEL.SAFE; $('bar').style.width='0'; $('score').textContent='0'; $('arch').textContent='none'; $('rail').textContent='none'; $('loss').textContent='$0'; $('fired').innerHTML=''; $('neg').innerHTML=''; partialEls={}; lastText={}; }
   function scroll() { $('transcript').scrollTop = $('transcript').scrollHeight; }
   function esc(s) { return String(s).replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c])); }
   $('notscam').onclick = () => dash.send(JSON.stringify({type:'feedback', trace_id: traceId}));
 
   // ---------------- browser call mode (ElevenLabs agent = caller)
   $('agentId').value = localStorage.getItem('agentId') || '';
+  $('bankAgentId').value = localStorage.getItem('bankAgentId') || DEFAULT_BANK_AGENT;
 
   $('answer').onclick = async () => {
     const agentId = $('agentId').value.trim();
@@ -210,9 +246,11 @@
   // in the literature: legitimate agents accept it, scammers refuse or escalate.
   const CHALLENGE = "Hi, this is William's call screening assistant. He doesn't share personal details or codes on calls he didn't place. If you can give me a reference number, he'll call you back on the number printed on his card.";
   let challenged = false;
-  $('shield').onclick = async () => {
+  $('shield').onclick = () => runChallenge();
+  async function runChallenge() {
     if (!conv || challenged) return;
     challenged = true;
+    await waitForAgentToFinish(7000);
     $('shield').disabled = true; $('shield').classList.remove('armed');
     $('status').textContent = 'Shield is speaking to the caller...';
     try { conv.setMicMuted(true); } catch {}
@@ -225,7 +263,73 @@
     try { conv.sendUserMessage(CHALLENGE); } catch (e) { console.warn('sendUserMessage failed', e); }
     try { conv.setMicMuted(false); } catch {}
     $('status').textContent = 'Callback test issued. Watching the caller.';
-  };
+  }
+
+  function sysLine(text) { const el = document.createElement('div'); el.className = 'sys'; el.textContent = text; $('transcript').appendChild(el); scroll(); }
+
+  // ---------------- Verify by callback: shield dials the official line (another agent in the browser demo)
+  const VERIFY_LINE = () => `Hi, I'm the call screening assistant for William Spangenberg. I'm calling to verify a fraud case. The reference number is ${referenceNo.split('').join(' ')}.`;
+  async function verifyByCallback() {
+    if (verifying || !referenceNo) return;
+    verifying = true;
+    const bankId = ($('bankAgentId').value.trim() || DEFAULT_BANK_AGENT);
+    localStorage.setItem('bankAgentId', bankId);
+    sysLine('Shield is calling the number on the back of the card...');
+    $('status').textContent = 'Calling the official line to verify ' + referenceNo + '...';
+    let bankConv = null, bankSaid = '';
+    try {
+      const sess = await fetch(`/api/agent-session?agent_id=${encodeURIComponent(bankId)}`).then(r => r.json());
+      const opts = sess.conversation_token ? { conversationToken: sess.conversation_token, connectionType: 'webrtc' }
+                 : sess.signed_url ? { signedUrl: sess.signed_url, connectionType: 'websocket' }
+                 : { agentId: bankId, connectionType: 'webrtc' };
+      let greeted = false;
+      bankConv = await Conversation.startSession({
+        ...opts,
+        onConnect: () => { try { bankConv?.setMicMuted(true); } catch {} },
+        onDisconnect: () => finishVerify(bankSaid),
+        onError: e => sysLine('Bank line error: ' + (e?.message || e)),
+        onModeChange: ({ mode }) => { lastMode = mode; modeWaiters.slice().forEach(w => w(mode)); },
+        onMessage: m => {
+          const text = (m.message ?? m.text ?? '').trim();
+          const src = m.source ?? m.role ?? (lastMode === 'speaking' ? 'ai' : 'user');
+          if (!text || src === 'user') return;
+          const el = document.createElement('div'); el.className = 'line BANK';
+          el.innerHTML = `<span class="who">BANK LINE</span>${esc(text)}`; $('transcript').appendChild(el); scroll();
+          if (!greeted) { greeted = true; setTimeout(async () => {
+            await waitForAgentToFinish(6000);
+            const el2 = document.createElement('div'); el2.className = 'line SHIELD';
+            el2.innerHTML = `<span class="who">SHIELD</span>${esc(VERIFY_LINE())}`; $('transcript').appendChild(el2); scroll();
+            try { bankConv.sendUserMessage(VERIFY_LINE()); } catch {}
+          }, 200); return; }
+          bankSaid += ' ' + text;
+          if (/open|genuine|blocked|closed|confirm|yes/i.test(text) || /not see|no open case|did not place|no case/i.test(text)) {
+            setTimeout(async () => { await waitForAgentToFinish(9000); try { await bankConv.endSession(); } catch {} finishVerify(bankSaid); }, 300);
+          }
+        },
+      });
+    } catch (e) { sysLine('Could not reach the official line: ' + (e?.message || e)); verifying = false; }
+  }
+  let verifyDone = false;
+  function finishVerify(said) {
+    if (verifyDone) return; verifyDone = true;
+    const ok = /open|genuine|blocked|closed|confirm/i.test(said) && !/not see|no open case|did not place|no case/i.test(said);
+    const v = $('verified');
+    if (ok) {
+      v.className = 'ok'; v.textContent = `VERIFIED on the official line: case ${referenceNo} is genuine. The original call was legitimate.`;
+      $('tier').textContent = 'SAFE'; $('tier').className = 'SAFE'; $('tierlabel').textContent = 'Verified with the bank'; $('bar').style.width = '0';
+      $('alert').style.display = 'none';
+      $('pushTitle').textContent = `Fraud case ${referenceNo} verified`;
+      $('pushBody').textContent = 'Two charges in Dallas were blocked. Your card ending 4417 is closed and a replacement ships in 5 to 7 business days. No action needed.';
+    } else {
+      v.className = 'bad'; v.textContent = `NOT VERIFIED: the bank has no case ${referenceNo}. The original caller was not Chase.`;
+      $('tier').textContent = 'FRAUD'; $('tier').className = 'FRAUD'; $('tierlabel').textContent = 'Caller failed verification';
+      $('pushTitle').textContent = 'Suspicious call blocked';
+      $('pushBody').textContent = 'Someone claiming to be Chase called you today. We have no record of it. Do not share any information with them. Review your account in the app.';
+    }
+    $('push').style.display = 'block';
+    $('status').textContent = 'Verification complete.';
+    dash.send(JSON.stringify({ type: 'feedback', trace_id: traceId, verified: ok, reference: referenceNo }));
+  }
 
   function playClip(url, fallbackText) {
     return new Promise(res => {
@@ -277,6 +381,7 @@
   async function endCall(sendEnd) {
     try { await conv?.endSession(); } catch {}
     conv = null;
+    if (referenceNo && callerAccepted && !verifying) setTimeout(verifyByCallback, 1200);
     if (sendEnd) { try { callWs?.send(JSON.stringify({ type: 'end' })); } catch {} }
     try { callWs?.close(); } catch {}
     callWs = null;

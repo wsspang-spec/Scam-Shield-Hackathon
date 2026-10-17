@@ -12,9 +12,9 @@ from elevenlabs.client import ElevenLabs
 
 load_dotenv()
 ROOT = Path(__file__).resolve().parent.parent
-TEXT = ("Warning. This call shows three signs of a scam. "
-        "Hang up now and call the number on the back of your card. "
-        "Never read a security code to anyone who called you.")
+TEXT = ("This call is a scam. Do not share any codes or personal information. "
+        "Scam Shield is ending the call now. If you want to check your account, "
+        "call the number on the back of your card.")
 VOICE_ID = sys.argv[1] if len(sys.argv) > 1 else "21m00Tcm4TlvDq8ikWAM"  # Rachel
 
 client = ElevenLabs(api_key=os.environ["ELEVENLABS_API_KEY"])
