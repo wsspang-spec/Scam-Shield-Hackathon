@@ -17,18 +17,6 @@
   button { background:var(--accent); color:#fff; border:0; padding:9px 16px; border-radius:8px; cursor:pointer; font-weight:600; }
   button.secondary { background:#1f2a37; border:1px solid #2c3a4b; }
   button:disabled { opacity:.4; cursor:default; }
-  button#shield.armed { background:#8a6d00; animation:pulse 1.2s infinite; }
-  #transcript .SHIELD { border-left:4px solid var(--safe); background:#0f1f17; }
-  #transcript .BANK { border-left:4px solid #a78bfa; background:#161326; }
-  #transcript .sys { color:var(--muted); font-size:13px; font-style:italic; padding:6px 10px; }
-  #push { display:none; margin:12px 0; background:#f5f5f7; color:#111; border-radius:16px; padding:12px 14px; box-shadow:0 8px 30px rgba(0,0,0,.5); font-size:14px; }
-  #push .app { display:flex; align-items:center; gap:8px; font-size:12px; color:#555; margin-bottom:4px; }
-  #push .app b { color:#117aca; }
-  #push .title { font-weight:700; margin-bottom:2px; }
-  #push .cta { margin-top:8px; display:inline-block; background:#117aca; color:#fff; padding:6px 12px; border-radius:8px; font-weight:600; }
-  #verified { display:none; margin:12px 0; padding:12px 14px; border-radius:10px; font-weight:700; }
-  #verified.ok { display:block; background:#123d2a; color:#8df0b8; border:1px solid var(--safe); }
-  #verified.bad { display:block; background:#3d1216; color:#ffb3b5; border:1px solid var(--fraud); }
   main { display:grid; grid-template-columns:1.35fr 1fr; gap:16px; padding:16px 24px; height:calc(100vh - 62px); }
   .panel { background:var(--panel); border-radius:12px; padding:16px; overflow:auto; border:1px solid var(--line); }
   #transcript .line { padding:6px 10px; margin:4px 0; border-radius:8px; }
@@ -62,11 +50,9 @@
 <header>
   <h1>SCAM SHIELD <small>Real-time fraud control for the customer side of the call</small></h1>
   <div class="controls">
-    <input type="text" id="agentId" placeholder="Caller agent ID">
-    <input type="text" id="bankAgentId" placeholder="Bank official-line agent ID" style="width:220px">
+    <input type="text" id="agentId" placeholder="ElevenLabs agent ID (caller persona)">
     <button id="answer">Answer call</button>
     <button id="hangup" class="secondary" disabled>Hang up</button>
-    <button id="shield" class="secondary" disabled title="Shield speaks to the caller on your behalf and asks for a callback">Let Shield respond</button>
   </div>
   <div id="status">waiting for call</div>
 </header>
@@ -85,13 +71,6 @@
       <div class="stat"><div class="k">Utterance to decision</div><div class="v" id="lat">-</div></div>
     </div>
     <div id="alert"></div>
-    <div id="verified"></div>
-    <div id="push">
-      <div class="app"><span style="display:inline-block;width:14px;height:14px;border-radius:4px;background:#117aca"></span><b>Chase</b> &middot; now</div>
-      <div class="title" id="pushTitle"></div>
-      <div id="pushBody"></div>
-      <span class="cta">Open Chase app</span>
-    </div>
     <h3>Fraud indicators (caller's words)</h3>
     <div id="fired"></div>
     <h3>Legitimacy evidence</h3>
@@ -108,11 +87,6 @@
 
   const $ = id => document.getElementById(id);
   let traceId = null, partialEls = {}, conv = null, callWs = null, lastText = {}, lastMode = 'listening';
-  let referenceNo = null, callerAccepted = false, verifying = false;
-  const DEFAULT_BANK_AGENT = 'agent_7001m55g956kfsxvdsqcngxkpy3j';
-  // Callback verification is built but off for the demo: set to true to have the shield
-  // dial the official line after a caller gives a reference number.
-  const AUTO_CALLBACK = new URLSearchParams(location.search).get('callback') === '1';
 
   // Financial framing. Loss figures: FTC 2025 phone-initiated median $2,210 (older adults),
   // Hiya Q4 2024 Medicare avg $539. See docs/research.md for sources.
@@ -150,23 +124,6 @@
       if (!el) { el = document.createElement('div'); el.className = `line partial ${ev.speaker}`; $('transcript').appendChild(el); partialEls[ev.speaker] = el; }
       el.innerHTML = `<span class="who">${ev.speaker}</span>${esc(ev.text)}`; scroll();
     }
-    if (ev.type === 'turn' && ev.speaker === 'CALLER' && challenged && !referenceNo) {
-      const norm = wordsToDigits(ev.text);
-      const m = norm.match(/(?:reference|case|confirmation)\s*(?:number|no\.?|#)?\s*(?:is|:)?\s*((?:[A-Z]\s?){0,3}(?:\d\s?){5,8})/i);
-      if (m) {
-        referenceNo = m[1].replace(/\s+/g, '').toUpperCase(); callerAccepted = true;
-        sysLine('Reference captured: ' + referenceNo + '. Ending this call.' + (AUTO_CALLBACK ? ' Verifying on the official line.' : ''));
-        setTimeout(async () => { await waitForAgentToFinish(12000); if (conv) endCall(true); }, 300);
-      } else if (/no urgency|call (us|the number) back|number on the back|good practice|completely fine/i.test(ev.text)) {
-        callerAccepted = true;
-        sysLine('Caller accepted the callback. Ending this call.');
-        setTimeout(async () => { await waitForAgentToFinish(12000); if (conv) endCall(true); }, 300);
-      }
-    }
-    // drop SDK placeholder turns and the echo of the shield's own line
-    if (ev.type === 'turn' && (/^[.\s…]+$/.test(ev.text) || (ev.speaker === 'USER' && ev.text.includes('call screening assistant')))) return;
-    if (ev.type === 'partial' && /^[.\s…]+$/.test(ev.text)) return;
-    if (ev.type === 'turn' && ev.speaker === 'CALLER') callerTurnCount++;
     if (ev.type === 'turn') {
       const p = partialEls[ev.speaker]; if (p) { p.remove(); delete partialEls[ev.speaker]; }
       const el = document.createElement('div'); el.className = `line ${ev.speaker}`;
@@ -188,28 +145,18 @@
       $('neg').innerHTML = (ev.negatives || []).map(f => `<div class="fired neg">${esc(f.criterion)}<span class="q">"${esc(f.quote||'')}"</span></div>`).join('') || '<div class="fired weak">none</div>';
     }
     if (ev.type === 'alert') { $('alert').style.display = 'block'; $('alert').style.background = 'var(--fraud)'; $('alert').textContent = 'INTERVENTION: ' + (ev.user_action || 'Hang up.'); }
-    if (ev.type === 'score' && ev.tier === 'UNCERTAIN' && $('alert').style.background !== 'var(--fraud)') {
-      $('alert').style.display = 'block'; $('alert').style.background = '#8a6d00';
-      $('alert').textContent = challenged ? 'CALLBACK TEST ISSUED: watching how the caller responds' : 'Caller is requesting personal details. Shield is stepping in.';
-      const firedText = (ev.fired || []).map(f => (f.criterion || '') + ' ' + (f.quote || '')).join(' ');
-      const asksIdentity = /identity|supply|date of birth|dob|zip|address|account number|social|verify/i.test(firedText);
-      if (conv && !challenged && asksIdentity) runChallenge();
-      else if (conv && !challenged) { $('shield').disabled = false; $('shield').classList.add('armed'); }
-    }
-    if (ev.type === 'score' && challenged && !referenceNo) {
-      const negText = (ev.negatives || []).map(n => (n.criterion || '') + ' ' + (n.quote || '')).join(' ');
-      if (/callback|reference|case/i.test(negText)) callerAccepted = true;
+    if (ev.type === 'score' && ev.tier === 'UNCERTAIN' && ev.user_action && $('alert').style.background !== 'var(--fraud)') {
+      $('alert').style.display = 'block'; $('alert').style.background = '#8a6d00'; $('alert').textContent = 'COACH: ' + ev.user_action;
     }
     if (ev.type === 'score' && ev.tier === 'SAFE' && $('alert').style.background !== 'var(--fraud)') { $('alert').style.display = 'none'; }
   }
-  function reset() { callerTurnCount = 0; challenged = false; referenceNo = null; callerAccepted = false; verifying = false; verifyDone = false; $('verified').className=''; $('verified').style.display='none'; $('push').style.display='none'; $('shield').disabled = true; $('shield').classList.remove('armed'); $('transcript').innerHTML=''; $('alert').style.display='none'; $('tier').textContent='SAFE'; $('tier').className='SAFE'; $('tierlabel').textContent=TIERLABEL.SAFE; $('bar').style.width='0'; $('score').textContent='0'; $('arch').textContent='none'; $('rail').textContent='none'; $('loss').textContent='$0'; $('fired').innerHTML=''; $('neg').innerHTML=''; partialEls={}; lastText={}; }
+  function reset() { $('transcript').innerHTML=''; $('alert').style.display='none'; $('tier').textContent='SAFE'; $('tier').className='SAFE'; $('tierlabel').textContent=TIERLABEL.SAFE; $('bar').style.width='0'; $('score').textContent='0'; $('arch').textContent='none'; $('rail').textContent='none'; $('loss').textContent='$0'; $('fired').innerHTML=''; $('neg').innerHTML=''; partialEls={}; lastText={}; }
   function scroll() { $('transcript').scrollTop = $('transcript').scrollHeight; }
   function esc(s) { return String(s).replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c])); }
   $('notscam').onclick = () => dash.send(JSON.stringify({type:'feedback', trace_id: traceId}));
 
   // ---------------- browser call mode (ElevenLabs agent = caller)
   $('agentId').value = localStorage.getItem('agentId') || '';
-  $('bankAgentId').value = localStorage.getItem('bankAgentId') || DEFAULT_BANK_AGENT;
 
   $('answer').onclick = async () => {
     const agentId = $('agentId').value.trim();
@@ -242,93 +189,15 @@
           const text = (m.message ?? m.text ?? '').trim();
           const src = m.source ?? m.role ?? (lastMode === 'speaking' ? 'ai' : 'user');
           const speaker = (src === 'user') ? 'USER' : 'CALLER';
-          if (!text || lastText[speaker] === text || /^[.\s…]+$/.test(text)) return;
-          if (speaker === 'USER' && challenged && text.includes('call screening assistant')) return;
+          if (!text || lastText[speaker] === text) return;
           lastText[speaker] = text;
-          if (speaker === 'CALLER') revealCallerTurn(text);
-          else callWs?.send(JSON.stringify({ type: 'turn', speaker, text }));
+          callWs?.send(JSON.stringify({ type: 'turn', speaker, text }));
         },
       });
     } catch (e) { $('status').textContent = 'Could not start call: ' + (e?.message || e); endCall(false); }
   };
 
   $('hangup').onclick = () => endCall(true);
-  // debug hook for driving a call from the console: scamShield.say('Yes this is me')
-  window.scamShield = { say: t => { try { conv?.sendUserMessage(t); } catch (e) { console.warn(e); } }, get conv() { return conv; }, challenge: () => runChallenge(), get state() { return { challenged, referenceNo, callerAccepted, lastMode, callerTurnCount }; } };
-
-  // The SDK delivers the agent's full sentence before the voice speaks it. Reveal it
-  // word by word at speaking pace, starting when the voice starts, and send it to the
-  // scorer only when the sentence has been heard. Keeps transcript, audio and verdict in sync.
-  const WORD_MS = 330;  // ~180 wpm
-  let revealQueue = Promise.resolve();
-  function revealCallerTurn(text) {
-    revealQueue = revealQueue.then(() => new Promise(async resolve => {
-      const words = text.split(/\s+/);
-      // wait (briefly) for the voice to start
-      const t0 = Date.now();
-      while (lastMode !== 'speaking' && Date.now() - t0 < 2500) await new Promise(r => setTimeout(r, 50));
-      let i = 0, finished = false;
-      const flush = () => { if (finished) return; finished = true; handle({ type: 'partial', speaker: 'CALLER', text }); callWs?.send(JSON.stringify({ type: 'turn', speaker: 'CALLER', text })); resolve(); };
-      const onMode = mode => { if (mode === 'listening' && i > 0) { modeWaiters = modeWaiters.filter(w => w !== onMode); flush(); } };
-      modeWaiters.push(onMode);
-      const tick = () => {
-        if (finished) return;
-        i++;
-        handle({ type: 'partial', speaker: 'CALLER', text: words.slice(0, i).join(' ') });
-        if (i >= words.length) { modeWaiters = modeWaiters.filter(w => w !== onMode); flush(); }
-        else setTimeout(tick, WORD_MS);
-      };
-      tick();
-    }));
-  }
-
-  // ---------------- Shield speaks for the customer (callback test)
-  // The caller's reaction to a callback request is the strongest single discriminator
-  // in the literature: legitimate agents accept it, scammers refuse or escalate.
-  const CHALLENGE = "Hi, this is William's call screening assistant. He doesn't share personal details or codes on calls he didn't place. If you can give me a reference number, he'll call you back on the number printed on his card.";
-  let challenged = false;
-  $('shield').onclick = () => runChallenge();
-  async function runChallenge() {
-    if (!conv || challenged) return;
-    challenged = true;
-    await waitForAgentToFinish(7000);
-    $('shield').disabled = true; $('shield').classList.remove('armed');
-    $('status').textContent = 'Shield is speaking to the caller...';
-    // Mic stays OPEN: the caller hears the shield through the speaker, same as on a real phone.
-    const el = document.createElement('div'); el.className = 'line SHIELD';
-    el.innerHTML = `<span class="who">SHIELD</span>${esc(CHALLENGE)}`; $('transcript').appendChild(el); scroll();
-    callWs?.send(JSON.stringify({ type: 'turn', speaker: 'USER', text: '[Call screening assistant] ' + CHALLENGE }));
-    lastText['USER'] = CHALLENGE;
-    const callerTurnsBefore = callerTurnCount;
-    await playClip('/static/challenge.mp3', CHALLENGE);
-    sendTextToAgent(CHALLENGE);
-    $('status').textContent = 'Callback test issued. Watching the caller.';
-    // watchdog: if the caller has not responded in 7s, resend once
-    setTimeout(() => {
-      if (conv && callerTurnCount === callerTurnsBefore) {
-        sysLine('Caller has not responded to the shield yet; resending.');
-        sendTextToAgent(CHALLENGE);
-      }
-    }, 7000);
-  }
-  let callerTurnCount = 0;
-  function sendTextToAgent(text) {
-    try {
-      if (typeof conv?.sendUserMessage === 'function') { conv.sendUserMessage(text); console.debug('[shield] sendUserMessage ok'); }
-      else console.warn('[shield] sendUserMessage not available on this SDK build');
-    } catch (e) { console.warn('[shield] sendUserMessage failed', e); }
-  }
-
-  function playClip(url, fallbackText) {
-    return new Promise(res => {
-      let settled = false;
-      const finish = () => { if (!settled) { settled = true; res(); } };
-      const fallback = () => { if (settled) return; settled = true; const u = new SpeechSynthesisUtterance(fallbackText); u.onend = res; speechSynthesis.speak(u); };
-      const a = new Audio(url);
-      a.onended = finish; a.onerror = fallback;
-      a.play().catch(fallback);
-    });
-  }
 
   // The SDK delivers the agent's text as soon as the LLM produces it, before the
   // voice has spoken it. So the detector decides before the audience has heard the
@@ -359,12 +228,9 @@
 
   function playWarning(text) {
     return new Promise(res => {
-      let settled = false;
-      const finish = () => { if (!settled) { settled = true; res(); } };
-      const fallback = () => { if (settled) return; settled = true; speak(text, res); };
       const a = new Audio('/static/warning.mp3');
-      a.onended = finish; a.onerror = fallback;
-      a.play().catch(fallback);
+      a.onended = res; a.onerror = () => speak(text, res);
+      a.play().catch(() => speak(text, res));
     });
   }
   function speak(text, done) {
@@ -375,19 +241,10 @@
   async function endCall(sendEnd) {
     try { await conv?.endSession(); } catch {}
     conv = null;
-    if (AUTO_CALLBACK && referenceNo && callerAccepted && !verifying) setTimeout(verifyByCallback, 1200);
-    else if (callerAccepted && !verifying) {
-      const v = $('verified'); v.className = 'ok';
-      v.textContent = referenceNo
-        ? `Caller passed the callback test: reference ${referenceNo}, no urgency, invited a callback. Shield will verify on the number on your card.`
-        : `Caller passed the callback test: accepted the callback with no pressure. Shield will verify on the number on your card.`;
-      $('tier').textContent = 'SAFE'; $('tier').className = 'SAFE'; $('tierlabel').textContent = 'Passed callback test'; $('bar').style.width = '0';
-      $('alert').style.display = 'none'; $('status').textContent = 'Call ended. Caller passed.';
-    }
     if (sendEnd) { try { callWs?.send(JSON.stringify({ type: 'end' })); } catch {} }
     try { callWs?.close(); } catch {}
     callWs = null;
-    $('answer').disabled = false; $('hangup').disabled = true; $('shield').disabled = true; $('shield').classList.remove('armed');
+    $('answer').disabled = false; $('hangup').disabled = true;
   }
 </script>
 </body>
