@@ -191,7 +191,6 @@
           const speaker = (src === 'user') ? 'USER' : 'CALLER';
           if (!text || lastText[speaker] === text) return;
           lastText[speaker] = text;
-          if (speaker === 'CALLER') { lastCallerArrival = Date.now(); lastCallerWords = text.split(/\s+/).length; }
           callWs?.send(JSON.stringify({ type: 'turn', speaker, text }));
         },
       });
@@ -199,6 +198,7 @@
   };
 
   $('hangup').onclick = () => endCall(true);
+  window.scamShield = { say: t => { try { conv?.sendUserMessage(t); } catch (e) { console.warn(e); } }, get conv() { return conv; }, level: () => outputLevel(), get mode() { return lastMode; } };
 
   // The SDK delivers the agent's text as soon as the LLM produces it, before the
   // voice has spoken it. So the detector decides before the audience has heard the
@@ -217,17 +217,27 @@
     });
   }
 
-  // Track when the caller's latest sentence arrived and how long it should take to say.
-  let lastCallerArrival = 0, lastCallerWords = 0;
-  const MS_PER_WORD = 380;   // ~160 wpm, the agent's TTS pace
+  // Wait for the caller's audio to actually stop, measured from the agent's output level
+  // (SDK getOutputByteFrequencyData). Fires the moment the voice goes quiet. No estimates.
+  function outputLevel() {
+    try { const d = conv?.getOutputByteFrequencyData?.(); if (!d || !d.length) return 0; let s = 0; for (let i = 0; i < d.length; i++) s += d[i]; return s / d.length; } catch { return 0; }
+  }
+  function waitForOutputSilence({ maxMs = 20000, silentMs = 450, threshold = 6 } = {}) {
+    return new Promise(res => {
+      const t0 = Date.now(); let heard = false, quietSince = 0;
+      const iv = setInterval(() => {
+        const lvl = outputLevel(); const now = Date.now();
+        if (lvl > threshold) { heard = true; quietSince = 0; }
+        else if (heard) { if (!quietSince) quietSince = now; if (now - quietSince >= silentMs) { clearInterval(iv); res('ended'); } }
+        else if (now - t0 > 2500 && lastMode !== 'speaking') { clearInterval(iv); res('never-started'); }
+        if (now - t0 > maxMs) { clearInterval(iv); res('timeout'); }
+      }, 60);
+    });
+  }
   async function intervene(m) {
     $('status').textContent = 'Fraud detected. Letting the caller finish the sentence...';
-    // 1. wait at least the estimated speaking time of the flagged sentence
-    const minUntil = lastCallerArrival + lastCallerWords * MS_PER_WORD + 900;
-    const wait = Math.max(0, minUntil - Date.now());
-    if (wait) await new Promise(r => setTimeout(r, Math.min(wait, 15000)));
-    // 2. then, if the voice is still going, wait for it to stop
-    if (lastMode === 'speaking') await waitForAgentToFinish(6000);
+    const how = await waitForOutputSilence();
+    console.debug('[shield] intervene after', how);
     // 1. mute the caller, 2. warn the user, 3. end the session
     try { conv?.setVolume({ volume: 0 }); } catch {}
     $('status').textContent = 'Intervening.';
