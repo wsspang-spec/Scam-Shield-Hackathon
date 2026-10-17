@@ -45,7 +45,9 @@ class Scorer:
 
     # -- public ---------------------------------------------------------------
     async def add_turn(self, state: CallState, speaker: str, text: str) -> dict | None:
-        text = text.strip()
+        # strip TTS stage directions like [calm] or [slightly rushed] that expressive agents emit
+        text = re.sub(r"\[[^\]]{1,40}\]", "", text)
+        text = re.sub(r"\s{2,}", " ", text).strip()
         if not text:
             return None
         turn = {"turn": len(state.turns) + 1, "speaker": speaker, "text": text, "ts": time.time()}

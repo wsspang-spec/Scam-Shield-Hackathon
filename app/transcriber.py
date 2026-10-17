@@ -101,8 +101,9 @@ class ScribeSession:
                         try:
                             await ws.send(json.dumps({"message_type": "input_audio_chunk",
                                                       "audio_base_64": "", "sample_rate": 8000, "commit": True}))
-                        finally:
-                            return
+                        except Exception:  # noqa: BLE001
+                            pass
+                        return
                     await ws.send(self._chunk_msg(chunk))
 
             async def receiver():
