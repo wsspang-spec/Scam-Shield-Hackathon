@@ -256,7 +256,11 @@
     callWs?.send(JSON.stringify({ type: 'turn', speaker: 'USER', text: '[Call screening assistant] ' + REDIRECT }));
     lastText['USER'] = REDIRECT;
     $('status').textContent = 'Shield is speaking to the caller...';
+    // keep the agent from filling the silence while the shield talks
+    const hold = setInterval(() => { try { conv?.sendUserActivity?.(); } catch {} }, 1500);
+    try { conv?.sendUserActivity?.(); } catch {}
     await playClip('/static/redirect.mp3', REDIRECT);   // mic stays open: the caller hears it
+    clearInterval(hold);
     try { conv?.sendUserMessage(REDIRECT); } catch {}
     $('status').textContent = 'Waiting for the caller to provide a reference number...';
     redirectTimer = setTimeout(() => { if (!intervened) finishRedirect(); }, 25000);
