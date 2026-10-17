@@ -229,12 +229,13 @@
   function outputLevel() {
     try { const d = conv?.getOutputByteFrequencyData?.(); if (!d || !d.length) return 0; let s = 0; for (let i = 0; i < d.length; i++) s += d[i]; return s / d.length; } catch { return 0; }
   }
-  function waitForOutputSilence({ maxMs = 20000, holdMs = 300 } = {}) {
+  function waitForOutputSilence({ maxMs = 20000, holdMs = 300, strict = false } = {}) {
     return new Promise(res => {
       const t0 = Date.now(); let heard = false, quietSince = 0;
       const iv = setInterval(() => {
         const lvl = outputLevel(); const now = Date.now();
-        const quiet = (lastMode === 'listening' && lvl < 30) || lvl < 15;
+        // strict: ignore the mode flag (it flickers between sentences) and require real silence
+        const quiet = strict ? lvl < 12 : ((lastMode === 'listening' && lvl < 30) || lvl < 15);
         if (lvl >= 30) heard = true;
         if (heard && quiet) { if (!quietSince) quietSince = now; if (now - quietSince >= holdMs) { clearInterval(iv); res(); } }
         else quietSince = 0;
@@ -268,7 +269,7 @@
   async function finishRedirect() {
     if (intervened) return;
     clearTimeout(redirectTimer);
-    await waitForOutputSilence({ maxMs: 12000 });
+    await waitForOutputSilence({ maxMs: 30000, holdMs: 1000, strict: true });
     if (intervened) return;
     intervened = true;
     try { conv?.setVolume({ volume: 0 }); } catch {}
