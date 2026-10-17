@@ -81,23 +81,67 @@ def _local_guardrail(text: str) -> GuardrailResult:
 
 
 # ---------------------------------------------------------------------------
-# PRISM calls. Adjust payload shapes to the docs.
+# PRISM calls, matched to docs -> Guardrails and docs -> Traces.
+#
+# Auth is the API-key header, not "Authorization: Bearer" -- Bearer is a
+# dashboard session token and 401s a pt-sk-... key. Both prism.blockconvey.com
+# and api.prism.blockconvey.com serve these endpoints; PRISM_ENDPOINT picks one.
 # ---------------------------------------------------------------------------
 def _headers() -> dict:
-    return {"Authorization": f"Bearer {config.PRISM_API_KEY}", "Content-Type": "application/json"}
+    return {"X-PRISMtrace-Key": config.PRISM_API_KEY, "Content-Type": "application/json"}
 
 
 def _guardrail_payload(trace_id: str, text: str) -> dict:
+    """project_id and messages are required. There is no `mode` field -- block
+    vs flag is a property of the rule in the dashboard, not of the request.
+
+    Only the LAST role:"user" message is evaluated, so the whole scoring window
+    goes in as one user message; splitting it per speaker would hide the
+    caller's ask on every window where the user happened to speak last.
+    trace_id is optional and is what ties this decision to the trace sent next.
+    """
     return {
+        "project_id": config.PRISM_PROJECT,
         "trace_id": trace_id,
-        "project": config.PRISM_PROJECT,
-        "mode": "block",
-        "input": text,
+        "messages": [{"role": "user", "content": text}],
     }
 
 
 def _trace_payload(trace_id: str, **kw) -> dict:
-    return {"trace_id": trace_id, "project": config.PRISM_PROJECT, "timestamp": time.time(), **kw}
+    """The local record. Richer than ingest accepts; _ingest_payload maps it."""
+    return {"trace_id": trace_id, "project_id": config.PRISM_PROJECT,
+            "timestamp": time.time(), **kw}
+
+
+def _ingest_payload(record: dict) -> dict:
+    """Map the local record onto POST /api/traces.
+
+    session_id is what groups traces into one trajectory; one call is one
+    session, so it defaults to the call's trace_id. Fields ingest has no slot
+    for (step, blocked, model_called, block_honoured, raw) ride under metadata,
+    so the guardrail proofs survive the mapping.
+    """
+    output = record.get("output")
+    reserved = {"input", "output", "model", "latency_ms", "session_id", "project_id"}
+    payload = {
+        "project_id": config.PRISM_PROJECT,
+        "session_id": record.get("session_id") or record.get("trace_id"),
+        "model": record.get("model") or "guardrail",
+        "input_messages": [{"role": "user", "content": record.get("input", "")}],
+        "output_message": output if isinstance(output, str) else json.dumps(output),
+        # Validated as an int: a float 422s with "int_from_float". The
+        # fractional milliseconds stay in the local log.
+        "latency_ms": int(round(record.get("latency_ms") or 0)),
+        "metadata": {k: v for k, v in record.items() if k not in reserved},
+    }
+    # trace_id is idempotent: re-sending one returns the EXISTING trace instead
+    # of storing a new one. A call scores many windows, so sending the call id
+    # every time would collapse them into the first trace. Send it only for the
+    # guardrail-blocked record -- the one the Guardrails page matches against
+    # its enforcement check -- and let the rest group by session_id.
+    if record.get("blocked") and record.get("trace_id"):
+        payload["trace_id"] = record["trace_id"]
+    return payload
 
 
 def _log_local(record: dict) -> None:
@@ -119,14 +163,22 @@ async def guardrail_evaluate(trace_id: str, text: str) -> GuardrailResult:
                 headers=_headers(), json=_guardrail_payload(trace_id, text))
             r.raise_for_status()
             data = r.json()
-        # Adjust these keys to the real response. Common shapes: {"action":"block"},
-        # {"blocked":true}, {"decision":"BLOCK","reason":"..."}.
-        blocked = (
-            data.get("blocked") is True
-            or str(data.get("action", data.get("decision", ""))).lower() == "block"
-        )
-        res = GuardrailResult(blocked=blocked, reason=str(data.get("reason", "")),
-                              rule=str(data.get("rule", data.get("guardrail", ""))), raw=data)
+        # Every 200 carries `blocked` and `evaluated`; a block adds rule_name,
+        # rule_type, matched_text and fallback_message. evaluated=false means no
+        # rule actually ran (reason: plan_not_entitled / internal_error) and
+        # PRISM fails open, so its blocked=false must NOT be read as "clean" --
+        # that would silently disarm the detector on an entitlement lapse. Treat
+        # it like an outage and use the local rules, same as the except below.
+        if data.get("evaluated") is not True:
+            local.raw = data
+            _log_local({"kind": "guardrail", "trace_id": trace_id, "source": "local-not-evaluated",
+                        "prism_reason": str(data.get("reason", "")), **asdict(local)})
+            return local
+        res = GuardrailResult(
+            blocked=data.get("blocked") is True,
+            reason=str(data.get("matched_text") or data.get("fallback_message") or ""),
+            rule=str(data.get("rule_name") or data.get("rule_type") or ""),
+            raw=data)
         _log_local({"kind": "guardrail", "trace_id": trace_id, "source": "prism", **asdict(res)})
         return res
     except Exception as e:  # noqa: BLE001
@@ -135,16 +187,21 @@ async def guardrail_evaluate(trace_id: str, text: str) -> GuardrailResult:
 
 
 async def send_trace(trace_id: str, *, step: str, input: str, output: dict | str,
-                     latency_ms: float, blocked: bool, model: str = "", extra: dict | None = None) -> None:
+                     latency_ms: float, blocked: bool, model: str = "",
+                     session_id: str = "", extra: dict | None = None) -> None:
     record = _trace_payload(trace_id, step=step, input=input, output=output,
                             latency_ms=round(latency_ms, 1), blocked=blocked, model=model,
+                            session_id=session_id or trace_id,
                             **(extra or {}))
     _log_local({"kind": "trace", **record})
     if not config.PRISM_ENDPOINT:
         return
     try:
         async with httpx.AsyncClient(timeout=3.0) as client:
-            await client.post(f"{config.PRISM_ENDPOINT.rstrip('/')}/api/traces",
-                              headers=_headers(), json=record)
+            r = await client.post(f"{config.PRISM_ENDPOINT.rstrip('/')}/api/traces",
+                                  headers=_headers(), json=_ingest_payload(record))
+            r.raise_for_status()
     except Exception as e:  # noqa: BLE001
+        # Logged, never raised: a dead PRISM must not take the detector with it.
+        # Grep logs/traces.jsonl for "trace_error" when the dashboard is empty.
         _log_local({"kind": "trace_error", "trace_id": trace_id, "error": str(e)})
