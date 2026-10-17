@@ -146,7 +146,7 @@
     }
     if (ev.type === 'alert') { $('alert').style.display = 'block'; $('alert').textContent = 'INTERVENTION: ' + (ev.user_action || 'Hang up.'); }
   }
-  function reset() { $('transcript').innerHTML=''; $('alert').style.display='none'; $('tier').textContent='SAFE'; $('tier').className='SAFE'; $('tierlabel').textContent=TIERLABEL.SAFE; $('bar').style.width='0'; $('score').textContent='0'; $('arch').textContent='none'; $('rail').textContent='none'; $('loss').textContent='$0'; $('fired').innerHTML=''; $('neg').innerHTML=''; partialEls={}; lastText={}; }
+  function reset() { intervened = false; $('transcript').innerHTML=''; $('alert').style.display='none'; $('tier').textContent='SAFE'; $('tier').className='SAFE'; $('tierlabel').textContent=TIERLABEL.SAFE; $('bar').style.width='0'; $('score').textContent='0'; $('arch').textContent='none'; $('rail').textContent='none'; $('loss').textContent='$0'; $('fired').innerHTML=''; $('neg').innerHTML=''; partialEls={}; lastText={}; }
   function scroll() { $('transcript').scrollTop = $('transcript').scrollHeight; }
   function esc(s) { return String(s).replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c])); }
   $('notscam').onclick = () => dash.send(JSON.stringify({type:'feedback', trace_id: traceId}));
@@ -179,6 +179,7 @@
         onError: e => $('status').textContent = 'Agent error: ' + (e?.message || e),
         onModeChange: ({ mode }) => { lastMode = mode; },
         onMessage: m => {
+          if (intervened) return;
           console.debug('[el onMessage]', JSON.stringify(m));
           // SDK shapes seen: {message, source:'user'|'ai'} and {text, role}. Fall back to
           // mode: if the agent is speaking, the message is the agent's.
@@ -215,13 +216,16 @@
     });
   }
 
+  let intervened = false;
   async function intervene(m) {
     $('status').textContent = 'Fraud detected. Letting the caller finish the sentence...';
     await waitForOutputSilence();
-    // 1. mute the caller, 2. warn the user, 3. end the session
+    intervened = true;                       // ignore anything else from the caller
     try { conv?.setVolume({ volume: 0 }); } catch {}
-    $('status').textContent = 'Intervening.';
-    await playWarning(m.user_action);
+    try { await conv?.endSession(); } catch {}   // hang up on the caller first
+    conv = null;
+    $('status').textContent = 'Shield ended the call.';
+    await playWarning(m.user_action);        // then tell the user why
     endCall(true);
   }
 
