@@ -151,13 +151,21 @@
       el.innerHTML = `<span class="who">${ev.speaker}</span>${esc(ev.text)}`; scroll();
     }
     if (ev.type === 'turn' && ev.speaker === 'CALLER' && challenged && !referenceNo) {
-      const m = ev.text.match(/(?:reference|case)\s*(?:number|no\.?|#)?\s*(?:is|:)?\s*((?:[A-Z]\s?){0,3}(?:\d\s?){5,8})/i);
+      const norm = wordsToDigits(ev.text);
+      const m = norm.match(/(?:reference|case|confirmation)\s*(?:number|no\.?|#)?\s*(?:is|:)?\s*((?:[A-Z]\s?){0,3}(?:\d\s?){5,8})/i);
       if (m) {
         referenceNo = m[1].replace(/\s+/g, '').toUpperCase(); callerAccepted = true;
         sysLine('Reference captured: ' + referenceNo + '. Ending this call.' + (AUTO_CALLBACK ? ' Verifying on the official line.' : ''));
-        setTimeout(async () => { await waitForAgentToFinish(9000); if (conv) endCall(true); }, 300);
+        setTimeout(async () => { await waitForAgentToFinish(12000); if (conv) endCall(true); }, 300);
+      } else if (/no urgency|call (us|the number) back|number on the back|good practice|completely fine/i.test(ev.text)) {
+        callerAccepted = true;
+        sysLine('Caller accepted the callback. Ending this call.');
+        setTimeout(async () => { await waitForAgentToFinish(12000); if (conv) endCall(true); }, 300);
       }
     }
+    // drop SDK placeholder turns and the echo of the shield's own line
+    if (ev.type === 'turn' && (/^[.\s…]+$/.test(ev.text) || (ev.speaker === 'USER' && ev.text.includes('call screening assistant')))) return;
+    if (ev.type === 'partial' && /^[.\s…]+$/.test(ev.text)) return;
     if (ev.type === 'turn' && ev.speaker === 'CALLER') callerTurnCount++;
     if (ev.type === 'turn') {
       const p = partialEls[ev.speaker]; if (p) { p.remove(); delete partialEls[ev.speaker]; }
@@ -234,7 +242,7 @@
           const text = (m.message ?? m.text ?? '').trim();
           const src = m.source ?? m.role ?? (lastMode === 'speaking' ? 'ai' : 'user');
           const speaker = (src === 'user') ? 'USER' : 'CALLER';
-          if (!text || lastText[speaker] === text) return;
+          if (!text || lastText[speaker] === text || /^[.\s…]+$/.test(text)) return;
           if (speaker === 'USER' && challenged && text.includes('call screening assistant')) return;
           lastText[speaker] = text;
           if (speaker === 'CALLER') revealCallerTurn(text);
@@ -368,9 +376,11 @@
     try { await conv?.endSession(); } catch {}
     conv = null;
     if (AUTO_CALLBACK && referenceNo && callerAccepted && !verifying) setTimeout(verifyByCallback, 1200);
-    else if (referenceNo && callerAccepted && !verifying) {
+    else if (callerAccepted && !verifying) {
       const v = $('verified'); v.className = 'ok';
-      v.textContent = `Caller passed the callback test: reference ${referenceNo}, no urgency, invited a callback. Shield will verify on the number on your card.`;
+      v.textContent = referenceNo
+        ? `Caller passed the callback test: reference ${referenceNo}, no urgency, invited a callback. Shield will verify on the number on your card.`
+        : `Caller passed the callback test: accepted the callback with no pressure. Shield will verify on the number on your card.`;
       $('tier').textContent = 'SAFE'; $('tier').className = 'SAFE'; $('tierlabel').textContent = 'Passed callback test'; $('bar').style.width = '0';
       $('alert').style.display = 'none'; $('status').textContent = 'Call ended. Caller passed.';
     }
