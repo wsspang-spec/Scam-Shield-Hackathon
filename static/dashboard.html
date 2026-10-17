@@ -177,7 +177,7 @@
         onConnect: () => $('status').textContent = 'Call connected. Agent is the caller.',
         onDisconnect: () => { $('status').textContent = 'Call ended.'; endCall(false); },
         onError: e => $('status').textContent = 'Agent error: ' + (e?.message || e),
-        onModeChange: ({ mode }) => { lastMode = mode; },
+        onModeChange: ({ mode }) => { lastMode = mode; modeWaiters.slice().forEach(w => w(mode)); },
         onMessage: m => {
           console.debug('[el onMessage]', JSON.stringify(m));
           // SDK shapes seen: {message, source:'user'|'ai'} and {text, role}. Fall back to
@@ -195,9 +195,29 @@
 
   $('hangup').onclick = () => endCall(true);
 
+  // The SDK delivers the agent's text as soon as the LLM produces it, before the
+  // voice has spoken it. So the detector decides before the audience has heard the
+  // line. For the demo, let the caller finish the flagged sentence, then cut in.
+  let modeWaiters = [];
+  function waitForAgentToFinish(maxMs = 9000) {
+    return new Promise(res => {
+      let sawSpeaking = (lastMode === 'speaking');
+      const t = setTimeout(done, maxMs);
+      function done() { clearTimeout(t); modeWaiters = modeWaiters.filter(w => w !== onMode); res(); }
+      function onMode(mode) {
+        if (mode === 'speaking') sawSpeaking = true;
+        else if (mode === 'listening' && sawSpeaking) done();
+      }
+      modeWaiters.push(onMode);
+    });
+  }
+
   async function intervene(m) {
+    $('status').textContent = 'Fraud detected. Letting the caller finish the sentence...';
+    await waitForAgentToFinish();
     // 1. mute the caller, 2. warn the user, 3. end the session
     try { conv?.setVolume({ volume: 0 }); } catch {}
+    $('status').textContent = 'Intervening.';
     await playWarning(m.user_action);
     endCall(true);
   }
