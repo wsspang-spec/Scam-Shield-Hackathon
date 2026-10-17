@@ -110,6 +110,9 @@
   let traceId = null, partialEls = {}, conv = null, callWs = null, lastText = {}, lastMode = 'listening';
   let referenceNo = null, callerAccepted = false, verifying = false;
   const DEFAULT_BANK_AGENT = 'agent_7001m55g956kfsxvdsqcngxkpy3j';
+  // Callback verification is built but off for the demo: set to true to have the shield
+  // dial the official line after a caller gives a reference number.
+  const AUTO_CALLBACK = new URLSearchParams(location.search).get('callback') === '1';
 
   // Financial framing. Loss figures: FTC 2025 phone-initiated median $2,210 (older adults),
   // Hiya Q4 2024 Medicare avg $539. See docs/research.md for sources.
@@ -151,7 +154,7 @@
       const m = ev.text.match(/(?:reference|case)\s*(?:number|no\.?|#)?\s*(?:is|:)?\s*((?:[A-Z]\s?){0,3}(?:\d\s?){5,8})/i);
       if (m) {
         referenceNo = m[1].replace(/\s+/g, '').toUpperCase(); callerAccepted = true;
-        sysLine('Reference captured: ' + referenceNo + '. Ending this call and verifying on the official line.');
+        sysLine('Reference captured: ' + referenceNo + '. Ending this call.' + (AUTO_CALLBACK ? ' Verifying on the official line.' : ''));
         setTimeout(async () => { await waitForAgentToFinish(9000); if (conv) endCall(true); }, 300);
       }
     }
@@ -419,7 +422,13 @@
   async function endCall(sendEnd) {
     try { await conv?.endSession(); } catch {}
     conv = null;
-    if (referenceNo && callerAccepted && !verifying) setTimeout(verifyByCallback, 1200);
+    if (AUTO_CALLBACK && referenceNo && callerAccepted && !verifying) setTimeout(verifyByCallback, 1200);
+    else if (referenceNo && callerAccepted && !verifying) {
+      const v = $('verified'); v.className = 'ok';
+      v.textContent = `Caller passed the callback test: reference ${referenceNo}, no urgency, invited a callback. Shield will verify on the number on your card.`;
+      $('tier').textContent = 'SAFE'; $('tier').className = 'SAFE'; $('tierlabel').textContent = 'Passed callback test'; $('bar').style.width = '0';
+      $('alert').style.display = 'none'; $('status').textContent = 'Call ended. Caller passed.';
+    }
     if (sendEnd) { try { callWs?.send(JSON.stringify({ type: 'end' })); } catch {} }
     try { callWs?.close(); } catch {}
     callWs = null;
