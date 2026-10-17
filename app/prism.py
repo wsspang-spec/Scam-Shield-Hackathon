@@ -55,9 +55,11 @@ _LOCAL_RULES = [
     # v1 only matched verb-before-noun ("read me the code"). A live run of the Marcus agent
     # said "sending a security code ... please read it back to me" and slipped to the model.
     # v2 matches either order within the same window.
+    # v3: "confirm the billing zip code" (a legitimate identity check) matched on "code".
+    # Exclude zip/area/postal/country code.
     ("otp_readback", re.compile(
-        r"\b(read|tell|give|text|type|repeat|confirm)\b.{0,40}\b(code|one[- ]time|otp|pin|password|cvv|security number)\b"
-        r"|\b(code|one[- ]time|otp|pin|password|cvv)\b.{0,80}\b(read|tell|give|text|type|repeat)\b.{0,20}\b(it|that|them|me)\b", re.I)),
+        r"\b(read|tell|give|text|type|repeat|confirm)\b.{0,40}\b(?<!zip )(?<!area )(?<!postal )(?<!country )(code|one[- ]time|otp|pin|password|cvv|security number)\b"
+        r"|\b(?<!zip )(?<!area )(?<!postal )(?<!country )(code|one[- ]time|otp|pin|password|cvv)\b.{0,80}\b(read|tell|give|text|type|repeat)\b.{0,20}\b(it|that|them|me)\b", re.I)),
     ("secret_request", re.compile(
         r"\b(full|entire|whole|complete)\b.{0,20}\b(social|ssn|card number|account number)\b", re.I)),
     ("irreversible_rail", re.compile(
