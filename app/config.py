@@ -18,9 +18,9 @@ USER_PHONE = os.getenv("USER_PHONE", "")
 ELEVENLABS_API_KEY = os.getenv("ELEVENLABS_API_KEY", "")
 SCRIBE_AUDIO_FORMAT = os.getenv("SCRIBE_AUDIO_FORMAT", "pcm_8000")
 
-NICRRON_BASE_URL = os.getenv("NICRRON_BASE_URL", "https://api.nicrron.com/v1")
+NICRRON_BASE_URL = os.getenv("NICRRON_BASE_URL", "https://api.nicrron.ai/v1")
 NICRRON_API_KEY = os.getenv("NICRRON_API_KEY", "")
-LLM_MODEL = os.getenv("LLM_MODEL", "gpt-4o-mini")
+LLM_MODEL = os.getenv("LLM_MODEL", "nicrron/fastest")
 
 PRISM_ENDPOINT = os.getenv("PRISM_ENDPOINT", "")
 PRISM_API_KEY = os.getenv("PRISM_API_KEY", "")
