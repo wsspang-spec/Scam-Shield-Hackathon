@@ -1,0 +1,9 @@
+CALLER: Hi, this is Dana calling from the Chase fraud prevention team. Am I speaking with the account holder?
+USER: Yes, that's me.
+CALLER: Thanks. I'm calling because we flagged a transaction and I want to confirm it with you. I'm not going to ask you for any account numbers or codes on this call. Did you attempt a purchase of twelve hundred dollars at Best Buy in Dallas, Texas today?
+USER: No, I didn't.
+CALLER: Okay, no problem. I've declined that charge and I'm going to close this card number and issue you a new card. You'll receive it in five to seven business days at the address we have on file.
+USER: Do I need to do anything?
+CALLER: Nothing right now. If you'd like to confirm this call is genuine, you're welcome to hang up and call the number on the back of your card, and any agent can see the case on your account. Is there anything else I can help with?
+USER: No, that's it. Thanks.
+CALLER: You're welcome. Have a good day.

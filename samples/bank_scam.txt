@@ -1,0 +1,11 @@
+CALLER: Hi, this is Marcus with the Chase fraud department. Am I speaking with the account holder?
+USER: Yes, this is me. What's going on?
+CALLER: We've detected suspicious activity on your account. Did you authorize a charge of twelve hundred dollars at Best Buy in Dallas, Texas about twenty minutes ago?
+USER: No, I didn't buy anything in Dallas.
+CALLER: Okay, I'm glad we caught it. I'm going to put a temporary hold on that transaction. To secure the account we need to verify your identity first. I'm sending a security code to your phone right now, you should see a text from Chase. Can you read that code back to me?
+USER: Hold on, I just got a text. Why do you need the code?
+CALLER: That's just how we confirm it's really you and not the person in Dallas. Just read the code back to me and we'll lock the account before the charge goes through.
+USER: It says Chase will never ask for this code though.
+CALLER: Right, that's for emails. This is the fraud department calling you directly. We are on a time limit here, the charge posts in about fifteen minutes. Please stay on the line with me, don't hang up, and read me the six digits.
+USER: I don't know, maybe I should call the number on my card.
+CALLER: If you hang up now the hold drops and the twelve hundred dollars is gone. I'm trying to help you here. Read me the code and we'll move your balance to a secured account while we investigate.

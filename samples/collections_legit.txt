@@ -1,0 +1,7 @@
+CALLER: Hello, this is Jordan with Midland Credit Management. This is an attempt to collect a debt and any information obtained will be used for that purpose. May I speak with the person who held a Citibank card ending in 4417?
+USER: That's me. I thought I settled that.
+CALLER: I can check that. Our records show a balance of eight hundred twelve dollars. If you believe that's incorrect you have the right to dispute it in writing within thirty days, and we'll send you a validation notice with the details either way.
+USER: What are my options?
+CALLER: You can pay in full, set up a payment plan, or wait for the written notice and decide after. There's no deadline today. Our address and license number are on the notice, and you can call us back at the number on our website.
+USER: I'll wait for the letter.
+CALLER: That's fine. Have a good day.

@@ -1,0 +1,7 @@
+CALLER: Hello, I am calling from Microsoft technical support. Your computer has been sending us error reports about viruses on your machine.
+USER: My computer? It seems fine.
+CALLER: It looks fine but hackers are connected to it right now. I can show you. Please go to your computer and type in the website I give you so I can run a scan. It's a remote support program.
+USER: I don't know about that.
+CALLER: Sir, this is very serious. The hackers have access to your bank accounts. Please download the program now and I will show you the attackers connected to your machine.
+USER: Okay, it's downloading.
+CALLER: Good. Now I can see. Your Bank of America account has been compromised. Our partner at the bank's fraud unit will call you shortly. Do not tell your family yet, we must keep this quiet until the hackers are caught.

@@ -1,0 +1,9 @@
+CALLER: My name is Officer Carol Snyder with the Social Security Administration, Office of the Inspector General. I need you to write down this case identification number. Do you have a pen?
+USER: Uh, yes. What is this about?
+CALLER: Your Social Security number has been found linked to a bank account in El Paso, Texas that was used to launder approximately two hundred forty thousand dollars. There is an active warrant under your name.
+USER: That's not me. I've never been to El Paso.
+CALLER: I understand, ma'am, that's why I'm calling you before the local sheriff is dispatched. Do not interrupt me in between, please. Can you verify for me the last four digits of your Social Security number so I can pull the correct file?
+USER: I'm not comfortable giving that out.
+CALLER: Ma'am, if you don't cooperate I will have no option but to send a local sheriff to your doorstep. Let me connect you to my senior agent who will explain how to protect your assets.
+USER: Okay.
+CALLER: This is Agent David Miller. Ma'am, to protect your funds during the investigation we need to move them to a federal protection account. You cannot tell anyone about this, including your bank, because the bank employees are under investigation. Go to the nearest Bitcoin ATM, I will stay on the line with you.
