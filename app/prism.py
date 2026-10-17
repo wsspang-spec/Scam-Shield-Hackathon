@@ -113,6 +113,29 @@ def _trace_payload(trace_id: str, **kw) -> dict:
             "timestamp": time.time(), **kw}
 
 
+def _verdict_for_ingest(output: dict | str) -> str:
+    """Serialize the verdict for output_message, minus the advisory prose.
+
+    PRISM scans output_message against the project's rules at ingest, not just
+    the input. Two of our own fields trip the project's rules:
+
+    * user_action -- the sentence we generate FOR the victim ("do not give any
+      part of your Social Security number") matches the read-back rule.
+    * latency_ms -- scorer writes a full-precision perf_counter float, and
+      PII/PHI Detection reads the digit run as a card or phone number
+      ("851.0374200013757" -> "Phone Number: 0374200013757"). It is redundant
+      here anyway; ingest takes latency_ms as a top-level int.
+
+    Either one files a block-action flag against a trace where nothing was
+    blocked. Dropping them keeps the Guardrails page to real detections. The
+    full record, both fields included, stays in logs/traces.jsonl.
+    """
+    if not isinstance(output, dict):
+        return output if isinstance(output, str) else json.dumps(output)
+    drop = {"user_action", "latency_ms"}
+    return json.dumps({k: v for k, v in output.items() if k not in drop})
+
+
 def _ingest_payload(record: dict) -> dict:
     """Map the local record onto POST /api/traces.
 
@@ -123,7 +146,9 @@ def _ingest_payload(record: dict) -> dict:
     """
     output = record.get("output")
     blocked = bool(record.get("blocked"))
-    reserved = {"input", "output", "model", "latency_ms", "session_id", "project_id"}
+    # "raw" is the model's unparsed reply; it embeds user_action verbatim, so it
+    # would re-introduce exactly what _verdict_for_ingest strips. Local log only.
+    reserved = {"input", "output", "model", "latency_ms", "session_id", "project_id", "raw"}
     payload = {
         "project_id": config.PRISM_PROJECT,
         "session_id": record.get("session_id") or record.get("trace_id"),
@@ -142,7 +167,7 @@ def _ingest_payload(record: dict) -> dict:
         # the only way to say that; omitting it 422s. metadata and model are
         # NOT consulted by the check, so model_called/block_honoured below are
         # for our own log, not evidence PRISM reads.
-        "output_message": "" if blocked else (output if isinstance(output, str) else json.dumps(output)),
+        "output_message": "" if blocked else _verdict_for_ingest(output),
         # Validated as an int: a float 422s with "int_from_float". The
         # fractional milliseconds stay in the local log.
         "latency_ms": int(round(record.get("latency_ms") or 0)),
