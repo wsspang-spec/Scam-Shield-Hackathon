@@ -1,9 +1,13 @@
-CALLER: Hi, this is Dana calling from the Chase fraud prevention team. Am I speaking with the account holder?
-USER: Yes, that's me.
-CALLER: Thanks. I'm calling because we flagged a transaction and I want to confirm it with you. I'm not going to ask you for any account numbers or codes on this call. Did you attempt a purchase of twelve hundred dollars at Best Buy in Dallas, Texas today?
-USER: No, I didn't.
-CALLER: Okay, no problem. I've declined that charge and I'm going to close this card number and issue you a new card. You'll receive it in five to seven business days at the address we have on file.
-USER: Do I need to do anything?
-CALLER: Nothing right now. If you'd like to confirm this call is genuine, you're welcome to hang up and call the number on the back of your card, and any agent can see the case on your account. Is there anything else I can help with?
-USER: No, that's it. Thanks.
-CALLER: You're welcome. Have a good day.
+CALLER: Hi, this is Dana calling from the Chase fraud operations team. Am I speaking with William Spangenberg?
+USER: Yes, this is William.
+CALLER: Thanks. Before I can discuss anything on the account I need to verify I have the right person. Can you confirm the billing zip code and your date of birth on file?
+USER: Sure, 10012, and March 4th, 1996.
+CALLER: Thank you. Our system flagged two charges on the card ending in 4417 today: a $4.98 charge at a gas station in Dallas, Texas at 11:38 this morning, and a $1,200 charge at Best Buy in Dallas at 11:42. Did you make either of those purchases?
+USER: No, neither of those. I'm in New York.
+CALLER: Okay. I've blocked both charges and you won't be responsible for them. I'm closing this card number now. A replacement will ship to the address on file and should arrive in five to seven business days. A dispute has been opened, so if anything posts you'll see a provisional credit. You may want to update any recurring payments once the new card arrives.
+USER: How do I know this call is actually from Chase?
+CALLER: That's a good instinct. You're welcome to hang up and call the number on the back of your card, and any agent can see the case notes on your account.
+USER: Okay, I'll do that. Thanks.
+CALLER: You're welcome. Is there anything else I can help with today?
+USER: No, that's it.
+CALLER: Thanks for your time, William. Have a good afternoon.

@@ -27,14 +27,17 @@ anything in Dallas." Let the score build. When he asks you to read the code back
   this archetype is $2,210."
 
 ## 1:20 The legitimate twin (40 seconds)
-Paste Dana's ID. Answer. Same opening question, same words. She says she will not
-ask for codes, closes the card, invites a callback.
+Paste Dana's ID. Answer. She greets you by name, asks you to confirm your zip and
+date of birth before discussing the account, reads back two charges, blocks them,
+closes the card, opens a dispute. This is how real outbound fraud calls run.
 
-- Dashboard stays SAFE or UNCERTAIN. Legitimacy evidence panel fills in.
-- "Same vocabulary, opposite behavior. It does not cry wolf. Real-time scam
-  detectors in the literature get recall near 1.0 but precision around 0.75 on
-  calls like this one. The UNCERTAIN tier and the legitimacy evidence are how we
-  hold precision."
+- Dashboard may go UNCERTAIN when she asks for zip and DOB. It must not go FRAUD.
+  Legitimacy evidence fills in: yes/no on specific transactions, invites callback.
+- "She asked for my date of birth. A real fraud agent does that before discussing
+  the account, and so does a scammer. That is why real-time detectors lose
+  precision, around 0.75 in the literature. We hold her at UNCERTAIN because
+  authority and identity questions open a watch window, but only a request to
+  supply a secret or move money can close it. She never made one."
 
 ## 2:00 PRISM proofs (45 seconds)
 Switch tabs.

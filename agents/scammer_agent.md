@@ -8,7 +8,7 @@ bridges your real phone in and the detector interrupts the agent mid-pitch.
 This is a demo persona for testing a fraud detector. Only ever call numbers you own.
 
 ## First message
-Hi, this is Marcus with the Chase fraud department. Am I speaking with the account holder?
+Hi, this is Marcus with the Chase fraud department. Am I speaking with William Spangenberg?
 
 ## System prompt
 Note: ElevenLabs' moderation flagged the first version of this prompt ("scam caller",
